@@ -1,11 +1,20 @@
+from html import escape
+
 import streamlit as st
 from httpx import HTTPError
 from ollama import ResponseError
 from pydantic import ValidationError
 
 from llm_startup_arena.config import AppConfig
-from llm_startup_arena.domain import Company, GameState
+from llm_startup_arena.domain import Company, Employee, EmployeeRole, GameState
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
+
+COMPANY_PROFILES = (
+    ("Nova Labs", "nova", "#7C5CFC", "#A78BFA"),
+    ("Orbit AI", "orbit", "#00B8A9", "#2DD4BF"),
+    ("Pixel Forge", "pixel", "#F59E0B", "#FBBF24"),
+    ("Apex Systems", "apex", "#EF476F", "#FB7185"),
+)
 
 
 def build_demo_state(model: str, *, starting_cash: int = 500_000) -> GameState:
@@ -20,19 +29,123 @@ def build_demo_state(model: str, *, starting_cash: int = 500_000) -> GameState:
     return GameState(round_number=1, companies=[company], clients=[])
 
 
+def build_arena_state(config: AppConfig) -> GameState:
+    """Create an equal starting position for the four demo companies."""
+    companies = []
+    for (name, company_id, _, _), model in zip(COMPANY_PROFILES, config.models, strict=True):
+        employees = [
+            Employee(
+                id=f"{company_id}-employee-{index}",
+                name=f"Employee {index}",
+                role=EmployeeRole.ENGINEER,
+                skill=50,
+                salary=5_000,
+            )
+            for index in range(1, config.game.starting_employees + 1)
+        ]
+        companies.append(
+            Company(
+                id=company_id,
+                name=name,
+                model=model,
+                cash=config.game.starting_cash,
+                product_score=20,
+                reputation=50,
+                employees=employees,
+            )
+        )
+    return GameState(round_number=1, companies=companies, clients=[])
+
+
+def inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .stApp { background: #0b1020; }
+        .block-container { max-width: 1400px; padding-top: 2.5rem; }
+        .arena-header {
+            padding: 1.5rem 1.75rem; margin-bottom: 1.5rem;
+            border: 1px solid #25304a; border-radius: 18px;
+            background: linear-gradient(135deg, #151d35 0%, #10162a 100%);
+        }
+        .arena-kicker { color: #9ca8c7; font-size: .82rem; letter-spacing: .12em; }
+        .arena-title { color: #f8fafc; font-size: 2.15rem; font-weight: 750; margin: .2rem 0; }
+        .arena-subtitle { color: #9ca8c7; margin: 0; }
+        .company-card {
+            min-height: 310px; padding: 1.35rem; border-radius: 18px;
+            border: 1px solid #29334d; background: #131a2d;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, .2);
+        }
+        .company-accent { height: 5px; border-radius: 10px; margin-bottom: 1.2rem; }
+        .company-name { color: #f8fafc; font-size: 1.25rem; font-weight: 700; }
+        .model-name { color: #8f9ab7; font-size: .82rem; margin: .25rem 0 1.25rem; }
+        .cash { color: #f8fafc; font-size: 1.75rem; font-weight: 750; }
+        .cash-label { color: #7f8aa6; font-size: .72rem; letter-spacing: .09em; }
+        .card-divider { border-top: 1px solid #29334d; margin: 1.15rem 0; }
+        .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+        .metric-value { color: #e8ecf7; font-size: 1.08rem; font-weight: 650; }
+        .metric-label { color: #7f8aa6; font-size: .7rem; }
+        .status-pill {
+            display: inline-block; padding: .3rem .65rem; margin-top: 1.25rem;
+            border-radius: 999px; font-size: .72rem; font-weight: 650;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_company_card(company: Company, accent: str, highlight: str) -> None:
+    st.markdown(
+        f"""
+        <div class="company-card">
+            <div class="company-accent" style="background:{accent}"></div>
+            <div class="company-name">{escape(company.name)}</div>
+            <div class="model-name">{escape(company.model)}</div>
+            <div class="cash">${company.cash:,.0f}</div>
+            <div class="cash-label">AVAILABLE CASH</div>
+            <div class="card-divider"></div>
+            <div class="metric-grid">
+                <div><div class="metric-value">{len(company.employees)}</div><div class="metric-label">EMPLOYEES</div></div>
+                <div><div class="metric-value">{len(company.client_ids)}</div><div class="metric-label">CLIENTS</div></div>
+                <div><div class="metric-value">{company.product_score}</div><div class="metric-label">PRODUCT</div></div>
+            </div>
+            <div class="status-pill" style="color:{highlight}; background:{accent}22">READY</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_arena(config: AppConfig) -> None:
+    state = build_arena_state(config)
+    st.markdown(
+        f"""
+        <div class="arena-header">
+            <div class="arena-kicker">ROUND {state.round_number} OF {config.game.total_rounds}</div>
+            <div class="arena-title">Startup Arena</div>
+            <p class="arena-subtitle">Four local models begin with equal resources. Strategy decides what happens next.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    columns = st.columns(config.game.company_count, gap="medium")
+    for column, company, (_, _, accent, highlight) in zip(
+        columns, state.companies, COMPANY_PROFILES, strict=True
+    ):
+        with column:
+            render_company_card(company, accent, highlight)
+
+
 def render_connection_test(config: AppConfig) -> None:
     st.subheader("Ollama connection test")
     selected_model = st.selectbox("Model", config.models)
-
     if not st.button("Generate test decision", type="primary"):
         return
 
     provider = OllamaProvider(base_url=config.ollama_base_url)
-    state = build_demo_state(
-        selected_model,
-        starting_cash=config.game.starting_cash,
-    )
-
+    state = build_demo_state(selected_model, starting_cash=config.game.starting_cash)
     try:
         with st.spinner(f"Waiting for {selected_model}..."):
             decision = provider.generate_decision(
@@ -51,6 +164,8 @@ def render_connection_test(config: AppConfig) -> None:
 def run() -> None:
     config = AppConfig.from_env()
     st.set_page_config(page_title="LLM Startup Arena", page_icon="🚀", layout="wide")
-    st.title("LLM Startup Arena")
-    st.caption("Four local LLMs. Ten rounds. One winning startup.")
-    render_connection_test(config)
+    inject_styles()
+    render_arena(config)
+
+    with st.expander("Developer tools"):
+        render_connection_test(config)
