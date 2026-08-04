@@ -31,6 +31,24 @@ llm_startup_arena/
 
 The LLMs choose actions. The deterministic engine calculates all consequences.
 
+## Employee roles
+
+Employees are deterministic game entities, not additional LLM agents. Each employee has
+a role, skill level, salary, morale, loyalty, and experience. These values will be used by
+the game engine when it resolves company decisions.
+
+| Role | Responsibility | Planned gameplay effect |
+|---|---|---|
+| `ENGINEER` | Builds and improves the technology | Makes product investment more effective |
+| `PRODUCT` | Chooses what the company should build | Improves product direction and client satisfaction |
+| `MARKETING` | Creates awareness and demand | Increases reputation and client attraction |
+| `SALES` | Converts interested clients into contracts | Improves the chance of winning clients |
+| `OPERATIONS` | Keeps the company efficient and organized | Reduces operating costs and supports employee morale |
+
+The current starting team contains two engineers and one employee each in product,
+marketing, and sales. Operations is available as a role but is not part of the initial
+five-person team. Role bonuses are planned mechanics and are not implemented yet.
+
 ## Run locally
 
 ```powershell
@@ -69,6 +87,13 @@ classDiagram
         +run_round()
         +run_game()
         +is_finished bool
+    }
+
+    class GameFactory {
+        +create() GameState
+        -create_companies()
+        -create_employees()
+        -create_clients()
     }
 
     class RoundResolver {
@@ -168,6 +193,7 @@ classDiagram
     }
 
     StreamlitApp --> Arena : controls
+    StreamlitApp --> GameFactory : creates initial state
     StreamlitApp --> MatchRepository : loads history
 
     Arena *-- GameConfig
@@ -175,6 +201,9 @@ classDiagram
     Arena --> LLMProvider : requests decisions
     Arena --> RoundResolver : resolves round
     Arena --> MatchRepository : saves results
+
+    GameFactory --> GameConfig : reads rules
+    GameFactory --> GameState : creates
 
     GameState *-- Company
     GameState *-- Client

@@ -6,15 +6,16 @@ from ollama import ResponseError
 from pydantic import ValidationError
 
 from llm_startup_arena.config import AppConfig
-from llm_startup_arena.domain import Company, Employee, EmployeeRole, GameState
+from llm_startup_arena.domain import Company, GameState
+from llm_startup_arena.engine import GameFactory
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
 
-COMPANY_PROFILES = (
-    ("Nova Labs", "nova", "#7C5CFC", "#A78BFA"),
-    ("Orbit AI", "orbit", "#00B8A9", "#2DD4BF"),
-    ("Pixel Forge", "pixel", "#F59E0B", "#FBBF24"),
-    ("Apex Systems", "apex", "#EF476F", "#FB7185"),
-)
+COMPANY_COLORS = {
+    "nova": ("#7C5CFC", "#A78BFA"),
+    "orbit": ("#00B8A9", "#2DD4BF"),
+    "pixel": ("#F59E0B", "#FBBF24"),
+    "apex": ("#EF476F", "#FB7185"),
+}
 
 
 def build_demo_state(model: str, *, starting_cash: int = 500_000) -> GameState:
@@ -27,34 +28,6 @@ def build_demo_state(model: str, *, starting_cash: int = 500_000) -> GameState:
         reputation=50,
     )
     return GameState(round_number=1, companies=[company], clients=[])
-
-
-def build_arena_state(config: AppConfig) -> GameState:
-    """Create an equal starting position for the four demo companies."""
-    companies = []
-    for (name, company_id, _, _), model in zip(COMPANY_PROFILES, config.models, strict=True):
-        employees = [
-            Employee(
-                id=f"{company_id}-employee-{index}",
-                name=f"Employee {index}",
-                role=EmployeeRole.ENGINEER,
-                skill=50,
-                salary=5_000,
-            )
-            for index in range(1, config.game.starting_employees + 1)
-        ]
-        companies.append(
-            Company(
-                id=company_id,
-                name=name,
-                model=model,
-                cash=config.game.starting_cash,
-                product_score=20,
-                reputation=50,
-                employees=employees,
-            )
-        )
-    return GameState(round_number=1, companies=companies, clients=[])
 
 
 def inject_styles() -> None:
@@ -118,11 +91,11 @@ def render_company_card(company: Company, accent: str, highlight: str) -> None:
 
 
 def render_arena(config: AppConfig) -> None:
-    state = build_arena_state(config)
+    state = GameFactory(config.game, config.models).create()
     st.markdown(
         f"""
         <div class="arena-header">
-            <div class="arena-kicker">ROUND {state.round_number} OF {config.game.total_rounds}</div>
+            <div class="arena-kicker">READY FOR ROUND {state.round_number + 1} OF {config.game.total_rounds}</div>
             <div class="arena-title">Startup Arena</div>
             <p class="arena-subtitle">Four local models begin with equal resources. Strategy decides what happens next.</p>
         </div>
@@ -131,9 +104,8 @@ def render_arena(config: AppConfig) -> None:
     )
 
     columns = st.columns(config.game.company_count, gap="medium")
-    for column, company, (_, _, accent, highlight) in zip(
-        columns, state.companies, COMPANY_PROFILES, strict=True
-    ):
+    for column, company in zip(columns, state.companies, strict=True):
+        accent, highlight = COMPANY_COLORS[company.id]
         with column:
             render_company_card(company, accent, highlight)
 
