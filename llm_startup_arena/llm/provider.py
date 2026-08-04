@@ -1,0 +1,52 @@
+from typing import Protocol
+
+from pydantic import BaseModel, Field
+
+from llm_startup_arena.domain import GameState
+
+
+class BudgetAllocation(BaseModel):
+    """Money assigned by a company to each strategic category."""
+
+    product: int = Field(default=0, ge=0)
+    marketing: int = Field(default=0, ge=0)
+    training: int = Field(default=0, ge=0)
+    recruitment: int = Field(default=0, ge=0)
+    retention: int = Field(default=0, ge=0)
+    sabotage: int = Field(default=0, ge=0)
+
+    @property
+    def total(self) -> int:
+        return sum(
+            (
+                self.product,
+                self.marketing,
+                self.training,
+                self.recruitment,
+                self.retention,
+                self.sabotage,
+            )
+        )
+
+
+class CompanyDecision(BaseModel):
+    """Validated action selected by one LLM for a single round."""
+
+    strategy: str = Field(min_length=1)
+    budget: BudgetAllocation
+    target_client_ids: list[str] = Field(default_factory=list, max_length=2)
+    target_employee_ids: list[str] = Field(default_factory=list, max_length=2)
+    partnership_offer: str | None = None
+    sabotage_action: str | None = None
+
+
+class LLMProvider(Protocol):
+    """Interface implemented by any model runtime used by the arena."""
+
+    def generate_decision(
+        self,
+        *,
+        model: str,
+        company_id: str,
+        state: GameState,
+    ) -> CompanyDecision: ...
