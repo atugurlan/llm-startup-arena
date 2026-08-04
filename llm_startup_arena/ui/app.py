@@ -10,6 +10,8 @@ from llm_startup_arena.domain import Company, GameState
 from llm_startup_arena.engine import GameFactory
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
 
+from .session import GameSession
+
 COMPANY_COLORS = {
     "nova": ("#7C5CFC", "#A78BFA"),
     "orbit": ("#00B8A9", "#2DD4BF"),
@@ -62,13 +64,21 @@ def inject_styles() -> None:
             display: inline-block; padding: .3rem .65rem; margin-top: 1.25rem;
             border-radius: 999px; font-size: .72rem; font-weight: 650;
         }
+        .round-note { color: #7f8aa6; font-size: .82rem; margin-top: .5rem; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_company_card(company: Company, accent: str, highlight: str) -> None:
+def render_company_card(
+    company: Company,
+    accent: str,
+    highlight: str,
+    *,
+    is_finished: bool,
+) -> None:
+    status = "FINISHED" if is_finished else "READY"
     st.markdown(
         f"""
         <div class="company-card">
@@ -83,19 +93,50 @@ def render_company_card(company: Company, accent: str, highlight: str) -> None:
                 <div><div class="metric-value">{len(company.client_ids)}</div><div class="metric-label">CLIENTS</div></div>
                 <div><div class="metric-value">{company.product_score}</div><div class="metric-label">PRODUCT</div></div>
             </div>
-            <div class="status-pill" style="color:{highlight}; background:{accent}22">READY</div>
+            <div class="status-pill" style="color:{highlight}; background:{accent}22">{status}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_arena(config: AppConfig) -> None:
-    state = GameFactory(config.game, config.models).create()
+def round_label(state: GameState, total_rounds: int) -> str:
+    if state.round_number >= total_rounds:
+        return f"GAME COMPLETE · {total_rounds} ROUNDS"
+    if state.round_number == 0:
+        return f"READY FOR ROUND 1 OF {total_rounds}"
+    return f"ROUND {state.round_number} COMPLETE · NEXT: {state.round_number + 1} OF {total_rounds}"
+
+
+def render_round_controls(session: GameSession, config: AppConfig) -> None:
+    progress_column, next_column, reset_column = st.columns([5, 1.4, 1.2])
+    with progress_column:
+        st.progress(session.state.round_number / config.game.total_rounds)
+        st.markdown(
+            '<div class="round-note">Round progression only; LLM decisions arrive in stage 3.</div>',
+            unsafe_allow_html=True,
+        )
+    with next_column:
+        if st.button(
+            "Run next round",
+            type="primary",
+            disabled=session.is_finished,
+            use_container_width=True,
+        ):
+            session.advance_round()
+            st.rerun()
+    with reset_column:
+        if st.button("New game", use_container_width=True):
+            session.new_game()
+            st.rerun()
+
+
+def render_arena(session: GameSession, config: AppConfig) -> None:
+    state = session.state
     st.markdown(
         f"""
         <div class="arena-header">
-            <div class="arena-kicker">READY FOR ROUND {state.round_number + 1} OF {config.game.total_rounds}</div>
+            <div class="arena-kicker">{round_label(state, config.game.total_rounds)}</div>
             <div class="arena-title">Startup Arena</div>
             <p class="arena-subtitle">Four local models begin with equal resources. Strategy decides what happens next.</p>
         </div>
@@ -103,11 +144,17 @@ def render_arena(config: AppConfig) -> None:
         unsafe_allow_html=True,
     )
 
+    render_round_controls(session, config)
     columns = st.columns(config.game.company_count, gap="medium")
     for column, company in zip(columns, state.companies, strict=True):
         accent, highlight = COMPANY_COLORS[company.id]
         with column:
-            render_company_card(company, accent, highlight)
+            render_company_card(
+                company,
+                accent,
+                highlight,
+                is_finished=session.is_finished,
+            )
 
 
 def render_connection_test(config: AppConfig) -> None:
@@ -137,7 +184,9 @@ def run() -> None:
     config = AppConfig.from_env()
     st.set_page_config(page_title="LLM Startup Arena", page_icon="🚀", layout="wide")
     inject_styles()
-    render_arena(config)
+    factory = GameFactory(config.game, config.models)
+    session = GameSession(st.session_state, factory, config.game.total_rounds)
+    render_arena(session, config)
 
     with st.expander("Developer tools"):
         render_connection_test(config)
