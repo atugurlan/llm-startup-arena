@@ -1,14 +1,54 @@
+from llm_startup_arena.domain import GameState
+
 SYSTEM_PROMPT = """
 You are the founder and CEO of one company in a competitive startup simulation.
 Choose actions that maximize the company's value after ten rounds while keeping it solvent.
-Return only a decision matching the supplied JSON schema. Do not calculate game outcomes;
-the deterministic game engine resolves every consequence.
+Return only a decision matching the supplied JSON schema. The deterministic game engine
+calculates all outcomes. Follow every decision rule in the user prompt exactly; a decision
+that breaks any rule is rejected and your company is forced to hold with a zero budget.
 """.strip()
 
 
-def build_company_prompt(company_id: str, state_json: str) -> str:
-    return (
-        f"You control company {company_id}.\n"
-        "All companies make decisions from the same frozen round snapshot.\n"
-        f"Current game state:\n{state_json}"
-    )
+def build_company_prompt(company_id: str, state: GameState) -> str:
+    company = next(company for company in state.companies if company.id == company_id)
+    own_employee_ids = [employee.id for employee in company.employees]
+    recruitable_employee_ids = [
+        employee.id
+        for competitor in state.companies
+        if competitor.id != company_id
+        for employee in competitor.employees
+    ]
+    client_ids = [client.id for client in state.clients]
+
+    return f"""
+You control company {company_id!r}.
+All companies decide from the same frozen round snapshot.
+
+DECISION RULES — violating any rule rejects the entire decision:
+1. Every budget value must be a non-negative integer.
+2. Total budget across all six categories must be at most {company.cash}.
+3. target_client_ids must contain 0–2 unique IDs selected only from VALID CLIENT IDS.
+4. target_employee_ids is only for recruiting employees from competing companies. It must
+   contain 0–2 unique IDs selected only from RECRUITABLE EMPLOYEE IDS.
+5. Never put one of YOUR EMPLOYEE IDS in target_employee_ids. Retention spending does not
+   require employee targets; use an empty target_employee_ids list when not recruiting.
+6. If sabotage budget is 0, sabotage_action must be null.
+7. If sabotage budget is greater than 0, sabotage_action must be a non-empty description.
+8. Use [] for unused target lists and null for unused optional actions or offers.
+9. Keep strategy short and descriptive.
+
+YOUR EMPLOYEE IDS (never recruitment targets):
+{own_employee_ids}
+
+RECRUITABLE EMPLOYEE IDS (the only valid recruitment targets):
+{recruitable_employee_ids}
+
+VALID CLIENT IDS:
+{client_ids}
+
+Example of consistent unused fields:
+target_employee_ids=[], target_client_ids=[], sabotage_action=null, partnership_offer=null
+
+CURRENT GAME STATE:
+{state.model_dump_json()}
+""".strip()

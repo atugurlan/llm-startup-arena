@@ -37,7 +37,7 @@ class OllamaProvider:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {
                     "role": "user",
-                    "content": build_company_prompt(company_id, state.model_dump_json()),
+                    "content": build_company_prompt(company_id, state),
                 },
             ],
             format=CompanyDecision.model_json_schema(),
