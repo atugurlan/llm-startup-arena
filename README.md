@@ -59,7 +59,8 @@ uv run streamlit run app.py
 Open `http://localhost:8501` after Streamlit starts. `uv run` keeps the project
 environment synchronized with `pyproject.toml` and `uv.lock`.
 
-The initial screen includes a live Ollama connection test for each configured model.
+The main screen displays four company cards. `Run next round` calls the models one at a
+time and displays each validated decision as soon as it arrives.
 
 Run the checks with:
 
@@ -67,6 +68,38 @@ Run the checks with:
 uv run pytest
 uv run ruff check .
 ```
+
+## Round decision workflow
+
+Each company receives the same frozen `GameState` snapshot. Models choose actions, while
+the application validates and stores their responses without allowing them to calculate
+or directly modify game outcomes.
+
+```mermaid
+flowchart TB
+    Start["Run next round"] --> Snapshot["Create one frozen state snapshot"]
+    Snapshot --> Model["Call next company's Ollama model"]
+    Model --> Validate["Validate decision"]
+    Validate -->|Valid| Display["Display and store decision"]
+    Validate -->|Invalid or failed| Hold["Store error and use Hold / $0 fallback"]
+    Display --> More{"Companies remaining?"}
+    Hold --> More
+    More -->|Yes| Model
+    More -->|No, at least one valid| Save["Save round record and advance"]
+    More -->|No valid decisions| Stop["Keep current round"]
+```
+
+Decision validation currently enforces:
+
+- the total budget cannot exceed company cash;
+- client and employee targets must exist and be unique;
+- companies cannot recruit their own employees;
+- sabotage actions and sabotage budgets must be consistent;
+- one invalid model response does not stop the other companies.
+
+The current stage collects decisions and advances the round counter. Economic effects such
+as spending, payroll, product growth, recruitment, and client acquisition are implemented
+in later stages of the deterministic engine.
 
 ## Architecture
 
@@ -83,40 +116,42 @@ flowchart LR
     subgraph Game["Game engine"]
         direction TB
         Factory["Game Factory"]
-        Arena["Arena"]
-        Resolver["Round Resolver"]
+        State["Game State"]
     end
 
     subgraph Intelligence["LLM layer"]
         direction TB
-        Provider["LLM Provider"]
+        Coordinator["Decision Coordinator"]
         Ollama["Ollama Provider"]
+        Validator["Decision Validator"]
         Decision["Company Decision"]
+        Record["Round Decision Record"]
     end
 
-    subgraph Data["State and storage"]
+    subgraph Future["Economic resolution — next stage"]
         direction TB
-        Config["Game Config"]
-        State["Game State"]
+        Arena["Arena"]
+        Resolver["Round Resolver"]
         Repository["Match Repository"]
     end
 
     App -->|controls| Session
-    App -.->|connection test| Ollama
+    App -->|starts round| Coordinator
     Session -->|creates / resets| Factory
     Session -->|stores| State
-    Factory -->|reads| Config
     Factory -->|creates| State
 
-    Arena -->|reads and updates| State
-    Arena -->|requests actions| Provider
-    Arena -->|delegates rules| Resolver
-    Arena -->|saves| Repository
-    Resolver -->|updates| State
+    Coordinator -->|shared snapshot| State
+    Coordinator -->|requests decision| Ollama
+    Ollama -->|returns| Decision
+    Coordinator -->|checks| Validator
+    Validator -->|accepts or rejects| Decision
+    Coordinator -->|builds| Record
+    Session -->|stores history| Record
 
-    Ollama -. implements .-> Provider
-    Provider -->|returns| Decision
-    Decision -->|processed by| Resolver
+    App -.->|not connected yet| Arena
+    Arena -.-> Resolver
+    Arena -.-> Repository
 ```
 
 

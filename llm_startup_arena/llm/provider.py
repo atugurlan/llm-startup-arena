@@ -34,10 +34,21 @@ class CompanyDecision(BaseModel):
 
     strategy: str = Field(min_length=1)
     budget: BudgetAllocation
-    target_client_ids: list[str] = Field(default_factory=list, max_length=2)
-    target_employee_ids: list[str] = Field(default_factory=list, max_length=2)
+    target_client_ids: list[str] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Unique existing client IDs targeted this round, or an empty list",
+    )
+    target_employee_ids: list[str] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Unique employee IDs belonging only to competing companies, or an empty list",
+    )
     partnership_offer: str | None = None
-    sabotage_action: str | None = None
+    sabotage_action: str | None = Field(
+        default=None,
+        description="Required when sabotage budget is positive; otherwise null",
+    )
 
 
 class LLMProvider(Protocol):
