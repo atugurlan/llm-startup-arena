@@ -47,3 +47,15 @@ def test_coordinator_shares_one_isolated_snapshot() -> None:
     assert all(snapshot is snapshots[0] for snapshot in snapshots)
     assert snapshots[0] is not state
     assert snapshots[0] == state
+
+
+def test_coordinator_reports_decisions_as_they_arrive() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    reported: list[str] = []
+
+    DecisionCoordinator(RecordingProvider()).collect(
+        state,
+        on_decision=lambda company_id, decision: reported.append(company_id),
+    )
+
+    assert reported == [company.id for company in state.companies]
