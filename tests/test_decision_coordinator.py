@@ -57,6 +57,22 @@ class PartiallyFailingProvider(RecordingProvider):
         )
 
 
+class RecoverableMistakeProvider:
+    def generate_decision(
+        self,
+        *,
+        model: str,
+        company_id: str,
+        state: GameState,
+    ) -> CompanyDecision:
+        return CompanyDecision(
+            strategy="recover invalid targets",
+            budget=BudgetAllocation(sabotage=10_000),
+            target_client_ids=["missing-client"],
+            target_employee_ids=[f"{company_id}-employee-1"],
+        )
+
+
 def test_coordinator_collects_one_decision_per_company() -> None:
     state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
     provider = RecordingProvider()
@@ -121,3 +137,17 @@ def test_coordinator_continues_after_model_failure() -> None:
     assert started == [company.id for company in state.companies]
     assert set(record.decisions) == {"nova", "pixel", "apex"}
     assert record.errors == {"orbit": "model unavailable"}
+
+
+def test_coordinator_normalizes_recoverable_mistakes() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    record = DecisionCoordinator(RecoverableMistakeProvider()).collect(state)
+
+    assert record.errors == {}
+    assert set(record.decisions) == {company.id for company in state.companies}
+    for decision in record.decisions.values():
+        assert decision.target_client_ids == []
+        assert decision.target_employee_ids == []
+        assert decision.budget.sabotage == 0
+        assert decision.sabotage_action is None

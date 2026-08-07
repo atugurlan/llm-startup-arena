@@ -5,6 +5,7 @@ from llm_startup_arena.engine import GameFactory
 from llm_startup_arena.llm import (
     BudgetAllocation,
     CompanyDecision,
+    DecisionNormalizer,
     DecisionValidationError,
     DecisionValidator,
 )
@@ -30,6 +31,39 @@ def test_validator_accepts_valid_decision(game_state) -> None:
     )
 
     assert result is decision
+
+
+def test_normalizer_repairs_recoverable_model_mistakes(game_state) -> None:
+    game_state.clients[1].company_id = "orbit"
+    game_state.clients[1].contract_rounds_remaining = 2
+    decision = CompanyDecision(
+        strategy="mixed invalid targets",
+        budget=BudgetAllocation(recruitment=10_000, sabotage=20_000),
+        target_client_ids=["client-1", "client-2"],
+        target_employee_ids=["nova-employee-1", "orbit-employee-1"],
+        sabotage_action=None,
+    )
+
+    normalized = DecisionNormalizer().normalize(
+        company_id="nova",
+        decision=decision,
+        state=game_state,
+    )
+
+    assert normalized.target_client_ids == ["client-1"]
+    assert normalized.target_employee_ids == ["orbit-employee-1"]
+    assert normalized.budget.sabotage == 0
+    assert normalized.sabotage_action is None
+    assert decision.target_client_ids == ["client-1", "client-2"]
+    assert decision.budget.sabotage == 20_000
+    assert (
+        DecisionValidator().validate(
+            company_id="nova",
+            decision=normalized,
+            state=game_state,
+        )
+        is normalized
+    )
 
 
 def test_validator_rejects_unknown_company(game_state) -> None:

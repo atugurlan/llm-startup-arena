@@ -179,6 +179,19 @@ payroll is processed.
 - unpaid payroll can lower loyalty enough to trigger departures in the same round;
 - departures appear beneath the company's latest decision in the interface.
 
+### Round outcomes
+
+After a round resolves, each company card shows a detailed outcome summary alongside its
+latest decision. The summary includes budget spending, product and reputation gains, role
+bonuses, training and retention effects, client wins and revenue, expired contracts, payroll,
+employee departures, and round-end cash. Company cards also expose reputation directly so
+the principal economic effects can be verified without inspecting the internal game state.
+Repeated client events are aggregated to keep all four outcome cells compact and aligned.
+
+Before validation, recoverable model mistakes are normalized: duplicate or unavailable client
+targets and invalid employee targets are removed, while an incomplete sabotage allocation is
+reset to zero. Overspending and malformed responses remain hard errors and reject the decision.
+
 ## Architecture
 
 ### Application flow

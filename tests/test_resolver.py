@@ -38,6 +38,11 @@ def test_investments_deduct_total_budget_and_improve_scores() -> None:
     assert company.cash == 320_000
     assert company.product_score == 25
     assert company.reputation == 53
+    assert resolved.last_round_events["nova"] == [
+        "Total budget spent: $180,000.",
+        "Product: +5 investment, +0 role bonus.",
+        "Reputation: +3 investment, +0 role bonus.",
+    ]
 
 
 def test_investments_do_not_mutate_input_state() -> None:
@@ -162,6 +167,7 @@ def test_targeted_client_signs_contract_and_pays_revenue() -> None:
     assert company.client_ids == ["client-1"]
     assert client.company_id == "nova"
     assert client.contract_rounds_remaining == 2
+    assert resolved.last_round_events["nova"] == ["Clients: won 1; revenue +$12,000."]
 
 
 def test_client_chooses_company_with_best_product_and_reputation() -> None:
@@ -401,7 +407,12 @@ def test_retention_can_prevent_departure_in_same_round() -> None:
 
     assert len(resolved.companies[0].employees) == 2
     assert [employee.loyalty for employee in resolved.companies[0].employees] == [41, 41]
-    assert resolved.last_round_events == {}
+    assert resolved.last_round_events["nova"] == [
+        "Total budget spent: $20,000.",
+        "Retention: 2 employees gained +2 morale and loyalty.",
+        "Payroll paid: -$30,000.",
+        "Round-end cash: $50,000.",
+    ]
 
 
 def test_unpaid_payroll_can_trigger_departures_in_same_round() -> None:
@@ -410,7 +421,12 @@ def test_unpaid_payroll_can_trigger_departures_in_same_round() -> None:
     resolved = RoundResolver().resolve_round(state, {})
 
     assert resolved.companies[0].employees == []
-    assert len(resolved.last_round_events["nova"]) == 2
+    assert resolved.last_round_events["nova"] == [
+        "Payroll missed: needed $30,000; morale -20, loyalty -15, reputation -5.",
+        "Employee One left the company (loyalty: 35).",
+        "Employee Two left the company (loyalty: 35).",
+        "Round-end cash: $0.",
+    ]
 
 
 def test_employees_start_leaving_after_two_unpaid_rounds() -> None:

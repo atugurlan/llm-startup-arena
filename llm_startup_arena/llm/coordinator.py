@@ -4,7 +4,7 @@ from llm_startup_arena.domain import GameState
 
 from .provider import CompanyDecision, LLMProvider
 from .round_record import RoundDecisionRecord
-from .validation import DecisionValidator
+from .validation import DecisionNormalizer, DecisionValidator
 
 
 class DecisionCoordinator:
@@ -14,9 +14,11 @@ class DecisionCoordinator:
         self,
         provider: LLMProvider,
         validator: DecisionValidator | None = None,
+        normalizer: DecisionNormalizer | None = None,
     ) -> None:
         self._provider = provider
         self._validator = validator or DecisionValidator()
+        self._normalizer = normalizer or DecisionNormalizer()
 
     def collect(
         self,
@@ -35,6 +37,11 @@ class DecisionCoordinator:
                 decision = self._provider.generate_decision(
                     model=company.model,
                     company_id=company.id,
+                    state=snapshot,
+                )
+                decision = self._normalizer.normalize(
+                    company_id=company.id,
+                    decision=decision,
                     state=snapshot,
                 )
                 self._validator.validate(

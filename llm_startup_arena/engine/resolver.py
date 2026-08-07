@@ -41,6 +41,8 @@ class RoundResolver:
         resolved = self.resolve_sabotage(resolved, decisions)
         resolved = self.process_payroll(resolved)
         resolved = self.resolve_departures(resolved)
+        for company in resolved.companies:
+            _record_event(resolved, company.id, f"Round-end cash: ${company.cash:,}.")
         resolved.round_number += 1
         return resolved
 
@@ -63,18 +65,34 @@ class RoundResolver:
                 )
 
             company.cash -= total_budget
+            if total_budget > 0:
+                _record_event(resolved, company.id, f"Total budget spent: ${total_budget:,}.")
+
+            product_gain = decision.budget.product // INVESTMENT_PER_SCORE_POINT
+            product_bonus = _product_role_bonus(company, decision)
             company.product_score = min(
                 100,
-                company.product_score
-                + decision.budget.product // INVESTMENT_PER_SCORE_POINT
-                + _product_role_bonus(company, decision),
+                company.product_score + product_gain + product_bonus,
             )
+            if decision.budget.product > 0:
+                _record_event(
+                    resolved,
+                    company.id,
+                    f"Product: +{product_gain} investment, +{product_bonus} role bonus.",
+                )
+
+            reputation_gain = decision.budget.marketing // INVESTMENT_PER_SCORE_POINT
+            reputation_bonus = _marketing_role_bonus(company, decision)
             company.reputation = min(
                 100,
-                company.reputation
-                + decision.budget.marketing // INVESTMENT_PER_SCORE_POINT
-                + _marketing_role_bonus(company, decision),
+                company.reputation + reputation_gain + reputation_bonus,
             )
+            if decision.budget.marketing > 0:
+                _record_event(
+                    resolved,
+                    company.id,
+                    f"Reputation: +{reputation_gain} investment, +{reputation_bonus} role bonus.",
+                )
         return resolved
 
     def resolve_training(
@@ -91,6 +109,13 @@ class RoundResolver:
             for employee in company.employees:
                 employee.skill = min(100, employee.skill + training_levels)
                 employee.experience += training_levels
+            if training_levels > 0:
+                _record_event(
+                    resolved,
+                    company.id,
+                    f"Training: {len(company.employees)} employees gained "
+                    f"+{training_levels} skill and experience.",
+                )
         return resolved
 
     def resolve_recruitment(
@@ -115,6 +140,13 @@ class RoundResolver:
             for employee in company.employees:
                 employee.morale = min(100, employee.morale + retention_points)
                 employee.loyalty = min(100, employee.loyalty + retention_points)
+            if retention_points > 0:
+                _record_event(
+                    resolved,
+                    company.id,
+                    f"Retention: {len(company.employees)} employees gained "
+                    f"+{retention_points} morale and loyalty.",
+                )
         return resolved
 
     def resolve_clients(
@@ -124,6 +156,9 @@ class RoundResolver:
     ) -> GameState:
         resolved = state.model_copy(deep=True)
         companies = {company.id: company for company in resolved.companies}
+        won_clients: dict[str, list[str]] = {}
+        revenue_by_company: dict[str, int] = {}
+        expired_contracts: dict[str, list[str]] = {}
 
         for client in resolved.clients:
             if client.company_id is not None:
@@ -146,16 +181,32 @@ class RoundResolver:
             client.contract_rounds_remaining = CLIENT_CONTRACT_ROUNDS
             if client.id not in winner.client_ids:
                 winner.client_ids.append(client.id)
+            won_clients.setdefault(winner.id, []).append(client.name)
 
         for client in resolved.clients:
             if client.company_id is None:
                 continue
             company = companies[client.company_id]
             company.cash += client.revenue_per_round
+            revenue_by_company[company.id] = (
+                revenue_by_company.get(company.id, 0) + client.revenue_per_round
+            )
             client.contract_rounds_remaining -= 1
             if client.contract_rounds_remaining == 0:
                 company.client_ids.remove(client.id)
                 client.company_id = None
+                expired_contracts.setdefault(company.id, []).append(client.name)
+
+        for company in resolved.companies:
+            parts = []
+            if company.id in won_clients:
+                parts.append(f"won {len(won_clients[company.id])}")
+            if company.id in revenue_by_company:
+                parts.append(f"revenue +${revenue_by_company[company.id]:,}")
+            if company.id in expired_contracts:
+                parts.append(f"{len(expired_contracts[company.id])} contract(s) expired")
+            if parts:
+                _record_event(resolved, company.id, f"Clients: {'; '.join(parts)}.")
 
         return resolved
 
@@ -178,6 +229,14 @@ class RoundResolver:
             payroll = gross_payroll * (100 - discount_percent) // 100
             if company.cash >= payroll:
                 company.cash -= payroll
+                discount_text = (
+                    f" ({discount_percent}% operations discount)" if discount_percent else ""
+                )
+                _record_event(
+                    resolved,
+                    company.id,
+                    f"Payroll paid: -${payroll:,}{discount_text}.",
+                )
                 continue
 
             company.cash = 0
@@ -194,6 +253,13 @@ class RoundResolver:
                     0,
                     employee.loyalty - UNPAID_PAYROLL_LOYALTY_PENALTY,
                 )
+            _record_event(
+                resolved,
+                company.id,
+                f"Payroll missed: needed ${payroll:,}; morale -{UNPAID_PAYROLL_MORALE_PENALTY}, "
+                f"loyalty -{UNPAID_PAYROLL_LOYALTY_PENALTY}, reputation "
+                f"-{UNPAID_PAYROLL_REPUTATION_PENALTY}.",
+            )
         return resolved
 
     def resolve_departures(self, state: GameState) -> GameState:
@@ -202,13 +268,19 @@ class RoundResolver:
             remaining_employees = []
             for employee in company.employees:
                 if employee.loyalty < DEPARTURE_LOYALTY_THRESHOLD:
-                    resolved.last_round_events.setdefault(company.id, []).append(
-                        f"{employee.name} left the company (loyalty: {employee.loyalty})."
+                    _record_event(
+                        resolved,
+                        company.id,
+                        f"{employee.name} left the company (loyalty: {employee.loyalty}).",
                     )
                     continue
                 remaining_employees.append(employee)
             company.employees = remaining_employees
         return resolved
+
+
+def _record_event(state: GameState, company_id: str, message: str) -> None:
+    state.last_round_events.setdefault(company_id, []).append(message)
 
 
 def _role_power(company: Company, role: EmployeeRole) -> int:

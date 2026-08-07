@@ -48,7 +48,7 @@ def inject_styles() -> None:
         .cash { color: #f8fafc; font-size: 1.75rem; font-weight: 750; }
         .cash-label { color: #7f8aa6; font-size: .72rem; letter-spacing: .09em; }
         .card-divider { border-top: 1px solid #29334d; margin: 1.15rem 0; }
-        .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }
         .metric-value { color: #e8ecf7; font-size: 1.08rem; font-weight: 650; }
         .metric-label { color: #7f8aa6; font-size: .7rem; }
         .status-pill {
@@ -58,8 +58,9 @@ def inject_styles() -> None:
         .round-note { color: #7f8aa6; font-size: .82rem; margin-top: .5rem; }
         .model-progress { color: #aeb8d4; font-size: .82rem; margin-top: .5rem; }
         .decision-box {
-            min-height: 125px; margin-top: .75rem; padding: .85rem 1rem;
+            height: 310px; margin-top: .75rem; padding: .85rem 1rem;
             border: 1px solid #29334d; border-radius: 14px; background: #101627;
+            overflow-y: auto; box-sizing: border-box;
         }
         .decision-label { color: #7f8aa6; font-size: .68rem; letter-spacing: .08em; }
         .decision-strategy { color: #e8ecf7; font-size: .88rem; margin: .3rem 0 .65rem; }
@@ -91,6 +92,7 @@ def render_company_card(
                 <div><div class="metric-value">{len(company.employees)}</div><div class="metric-label">EMPLOYEES</div></div>
                 <div><div class="metric-value">{len(company.client_ids)}</div><div class="metric-label">CLIENTS</div></div>
                 <div><div class="metric-value">{company.product_score}</div><div class="metric-label">PRODUCT</div></div>
+                <div><div class="metric-value">{company.reputation}</div><div class="metric-label">REPUTATION</div></div>
             </div>
             <div class="status-pill" style="color:{highlight}; background:{accent}22">{status}</div>
         </div>
@@ -212,7 +214,7 @@ def render_decision(
     budget_text = " · ".join(
         f"{escape(category.title())}: ${amount:,.0f}" for category, amount in allocations.items()
     )
-    event_text = "<br>".join(escape(event) for event in events or [])
+    event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
     outcome = (
         f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
         if event_text
@@ -236,7 +238,7 @@ def render_decision_error(
     message: str,
     events: list[str] | None = None,
 ) -> None:
-    event_text = "<br>".join(escape(event) for event in events or [])
+    event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
     outcome = (
         f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
         if event_text
