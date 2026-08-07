@@ -8,6 +8,9 @@ UNPAID_PAYROLL_MORALE_PENALTY = 20
 UNPAID_PAYROLL_LOYALTY_PENALTY = 10
 UNPAID_PAYROLL_REPUTATION_PENALTY = 5
 CLIENT_CONTRACT_ROUNDS = 3
+TRAINING_COST_PER_LEVEL = 25_000
+RETENTION_COST_PER_LEVEL = 20_000
+RETENTION_POINTS_PER_LEVEL = 2
 _HOLD_DECISION = CompanyDecision(strategy="hold", budget=BudgetAllocation())
 
 
@@ -21,6 +24,8 @@ class RoundResolver:
     ) -> GameState:
         resolved = state.model_copy(deep=True)
         resolved = self.resolve_investments(resolved, decisions)
+        resolved = self.resolve_training(resolved, decisions)
+        resolved = self.resolve_retention(resolved, decisions)
         resolved = self.resolve_recruitment(resolved, decisions)
         resolved = self.resolve_clients(resolved, decisions)
         resolved = self.resolve_sabotage(resolved, decisions)
@@ -57,12 +62,45 @@ class RoundResolver:
             )
         return resolved
 
+    def resolve_training(
+        self,
+        state: GameState,
+        decisions: Mapping[str, CompanyDecision],
+    ) -> GameState:
+        resolved = state.model_copy(deep=True)
+        for company in resolved.companies:
+            decision = decisions.get(company.id)
+            if decision is None:
+                continue
+            training_levels = decision.budget.training // TRAINING_COST_PER_LEVEL
+            for employee in company.employees:
+                employee.skill = min(100, employee.skill + training_levels)
+                employee.experience += training_levels
+        return resolved
+
     def resolve_recruitment(
         self,
         state: GameState,
         decisions: Mapping[str, CompanyDecision],
     ) -> GameState:
         return state
+
+    def resolve_retention(
+        self,
+        state: GameState,
+        decisions: Mapping[str, CompanyDecision],
+    ) -> GameState:
+        resolved = state.model_copy(deep=True)
+        for company in resolved.companies:
+            decision = decisions.get(company.id)
+            if decision is None:
+                continue
+            retention_levels = decision.budget.retention // RETENTION_COST_PER_LEVEL
+            retention_points = retention_levels * RETENTION_POINTS_PER_LEVEL
+            for employee in company.employees:
+                employee.morale = min(100, employee.morale + retention_points)
+                employee.loyalty = min(100, employee.loyalty + retention_points)
+        return resolved
 
     def resolve_clients(
         self,

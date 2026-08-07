@@ -65,6 +65,16 @@ CLIENT ACQUISITION AND REVENUE:
 - Contract revenue is paid every round, including the acquisition round.
 - Available client revenue per round: {client_revenue}
 
+EMPLOYEE TRAINING:
+- Every 25000 assigned to training gives every current employee +1 skill and +1 experience.
+- Skill is capped at 100. Experience has no upper limit.
+- Training amounts below 25000 are still spent but do not produce a level.
+
+EMPLOYEE RETENTION:
+- Every 20000 assigned to retention gives every current employee +2 morale and +2 loyalty.
+- Morale and loyalty are capped at 100.
+- Retention amounts below 20000 are still spent but do not produce an increase.
+
 Example of consistent unused fields:
 target_employee_ids=[], target_client_ids=[], sabotage_action=null, partnership_offer=null
 

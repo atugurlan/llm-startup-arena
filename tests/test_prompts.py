@@ -51,3 +51,23 @@ def test_company_prompt_explains_client_contracts_and_revenue() -> None:
     assert "product score plus reputation wins" in prompt
     assert "including the acquisition round" in prompt
     assert "'client-1': 8000" in prompt
+
+
+def test_company_prompt_explains_training_formula() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "Every 25000 assigned to training" in prompt
+    assert "+1 skill and +1 experience" in prompt
+    assert "Training amounts below 25000" in prompt
+
+
+def test_company_prompt_explains_retention_formula() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "Every 20000 assigned to retention" in prompt
+    assert "+2 morale and +2 loyalty" in prompt
+    assert "Retention amounts below 20000" in prompt

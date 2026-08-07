@@ -216,3 +216,51 @@ def test_expiring_contract_pays_final_revenue_and_releases_client() -> None:
     assert resolved.companies[0].client_ids == []
     assert resolved.clients[0].company_id is None
     assert resolved.clients[0].contract_rounds_remaining == 0
+
+
+def test_training_improves_every_employee_and_caps_skill() -> None:
+    state = build_payroll_state(cash=100_000)
+    state.companies[0].employees[0].skill = 99
+    state.companies[0].employees[1].skill = 60
+    decision = build_decision(training=50_000)
+
+    resolved = RoundResolver().resolve_training(state, {"nova": decision})
+
+    employees = resolved.companies[0].employees
+    assert [employee.skill for employee in employees] == [100, 62]
+    assert [employee.experience for employee in employees] == [2, 2]
+    assert [employee.skill for employee in state.companies[0].employees] == [99, 60]
+
+
+def test_training_below_one_level_has_no_employee_effect() -> None:
+    state = build_payroll_state(cash=100_000)
+
+    resolved = RoundResolver().resolve_training(
+        state,
+        {"nova": build_decision(training=24_999)},
+    )
+
+    assert resolved.companies[0].employees == state.companies[0].employees
+
+
+def test_retention_improves_every_employee_and_caps_scores() -> None:
+    state = build_payroll_state(cash=100_000, morale=95, loyalty=98)
+    decision = build_decision(retention=40_000)
+
+    resolved = RoundResolver().resolve_retention(state, {"nova": decision})
+
+    employees = resolved.companies[0].employees
+    assert [employee.morale for employee in employees] == [99, 99]
+    assert [employee.loyalty for employee in employees] == [100, 100]
+    assert [employee.morale for employee in state.companies[0].employees] == [95, 95]
+
+
+def test_retention_below_one_level_has_no_employee_effect() -> None:
+    state = build_payroll_state(cash=100_000)
+
+    resolved = RoundResolver().resolve_retention(
+        state,
+        {"nova": build_decision(retention=19_999)},
+    )
+
+    assert resolved.companies[0].employees == state.companies[0].employees

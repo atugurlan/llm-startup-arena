@@ -117,7 +117,21 @@ flowchart LR
 - every `$20,000` invested in `product` adds one `product_score` point;
 - every `$20,000` invested in `marketing` adds one reputation point;
 - product score and reputation are capped at `100`;
-- the effects of training, recruitment, retention, and sabotage are added in later stages.
+- the effects of recruitment and sabotage are added in later stages.
+
+### Training
+
+- every `$25,000` assigned to training gives every current employee `+1 skill` and
+  `+1 experience`;
+- skill is capped at `100`, while experience has no upper limit;
+- an incomplete `$25,000` training unit is still spent but produces no employee increase.
+
+### Retention
+
+- every `$20,000` assigned to retention gives every current employee `+2 morale` and
+  `+2 loyalty`;
+- morale and loyalty are capped at `100`;
+- an incomplete `$20,000` retention unit is still spent but produces no increase.
 
 ### Clients and revenue
 
