@@ -26,6 +26,37 @@ class RecordingProvider:
         )
 
 
+class OverspendingProvider:
+    def generate_decision(
+        self,
+        *,
+        model: str,
+        company_id: str,
+        state: GameState,
+    ) -> CompanyDecision:
+        return CompanyDecision(
+            strategy="spend everything",
+            budget=BudgetAllocation(product=state.companies[0].cash + 1),
+        )
+
+
+class PartiallyFailingProvider(RecordingProvider):
+    def generate_decision(
+        self,
+        *,
+        model: str,
+        company_id: str,
+        state: GameState,
+    ) -> CompanyDecision:
+        if company_id == "orbit":
+            raise RuntimeError("model unavailable")
+        return super().generate_decision(
+            model=model,
+            company_id=company_id,
+            state=state,
+        )
+
+
 def test_coordinator_collects_one_decision_per_company() -> None:
     state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
     provider = RecordingProvider()
@@ -59,3 +90,34 @@ def test_coordinator_reports_decisions_as_they_arrive() -> None:
     )
 
     assert reported == [company.id for company in state.companies]
+
+
+def test_coordinator_records_invalid_decision_as_error() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    reported: list[str] = []
+    rejected: list[str] = []
+
+    record = DecisionCoordinator(OverspendingProvider()).collect(
+        state,
+        on_decision=lambda company_id, decision: reported.append(company_id),
+        on_error=lambda company_id, message: rejected.append(company_id),
+    )
+
+    assert reported == []
+    assert rejected == [company.id for company in state.companies]
+    assert set(record.errors) == set(rejected)
+    assert all("exceeds available cash" in message for message in record.errors.values())
+
+
+def test_coordinator_continues_after_model_failure() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    started: list[str] = []
+
+    record = DecisionCoordinator(PartiallyFailingProvider()).collect(
+        state,
+        on_model_start=started.append,
+    )
+
+    assert started == [company.id for company in state.companies]
+    assert set(record.decisions) == {"nova", "pixel", "apex"}
+    assert record.errors == {"orbit": "model unavailable"}

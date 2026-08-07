@@ -1,3 +1,5 @@
+import pytest
+
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
 from llm_startup_arena.domain import GameState
 from llm_startup_arena.engine import GameFactory
@@ -7,13 +9,29 @@ from llm_startup_arena.ui.session import GameSession
 
 
 class FakeCoordinator:
-    def collect(self, state: GameState, on_decision=None) -> RoundDecisionRecord:
+    def collect(
+        self,
+        state: GameState,
+        on_decision=None,
+        on_error=None,
+        on_model_start=None,
+    ) -> RoundDecisionRecord:
         decision = CompanyDecision(strategy="grow", budget=BudgetAllocation())
+        if on_model_start is not None:
+            on_model_start("nova")
         if on_decision is not None:
             on_decision("nova", decision)
         return RoundDecisionRecord(
             round_number=state.round_number + 1,
             decisions={"nova": decision},
+        )
+
+
+class FailedCoordinator:
+    def collect(self, state: GameState, **kwargs) -> RoundDecisionRecord:
+        return RoundDecisionRecord(
+            round_number=state.round_number + 1,
+            errors={company.id: "failed" for company in state.companies},
         )
 
 
@@ -39,3 +57,13 @@ def test_run_next_round_records_decisions_before_advancing() -> None:
 
     assert session.state.round_number == 1
     assert session.latest_round is record
+
+
+def test_run_next_round_does_not_advance_when_all_models_fail() -> None:
+    session = build_session()
+
+    with pytest.raises(ValueError, match="All four models failed"):
+        run_next_round(session, FailedCoordinator())  # type: ignore[arg-type]
+
+    assert session.state.round_number == 0
+    assert session.round_history == []

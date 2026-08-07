@@ -111,9 +111,18 @@ def run_next_round(
     session: GameSession,
     coordinator: DecisionCoordinator,
     on_decision: Callable[[str, CompanyDecision], None] | None = None,
+    on_error: Callable[[str, str], None] | None = None,
+    on_model_start: Callable[[str], None] | None = None,
 ) -> RoundDecisionRecord:
     """Collect and store decisions before advancing the session round."""
-    record = coordinator.collect(session.state, on_decision=on_decision)
+    record = coordinator.collect(
+        session.state,
+        on_decision=on_decision,
+        on_error=on_error,
+        on_model_start=on_model_start,
+    )
+    if not record.decisions:
+        raise ValueError("All four models failed. The round was not advanced.")
     session.record_round(record)
     session.advance_round()
     return record
@@ -141,20 +150,37 @@ def render_round_controls(
             use_container_width=True,
         ):
             companies = {company.id: company for company in session.state.companies}
+            for slot in decision_slots.values():
+                slot.empty()
 
             def show_decision(company_id: str, decision: CompanyDecision) -> None:
                 render_decision(decision_slots[company_id], decision)
                 progress_message.markdown(
-                    f'<div class="model-progress">{escape(companies[company_id].name)} decided. Loading next model...</div>',
+                    f'<div class="model-progress">{escape(companies[company_id].name)} decided.</div>',
+                    unsafe_allow_html=True,
+                )
+
+            def show_error(company_id: str, message: str) -> None:
+                render_decision_error(decision_slots[company_id], message)
+                progress_message.markdown(
+                    f'<div class="model-progress">{escape(companies[company_id].name)} was rejected. Continuing...</div>',
+                    unsafe_allow_html=True,
+                )
+
+            def show_model_start(company_id: str) -> None:
+                progress_message.markdown(
+                    f'<div class="model-progress">Waiting for {escape(companies[company_id].name)}...</div>',
                     unsafe_allow_html=True,
                 )
 
             try:
-                progress_message.markdown(
-                    '<div class="model-progress">Waiting for Nova Labs...</div>',
-                    unsafe_allow_html=True,
+                run_next_round(
+                    session,
+                    coordinator,
+                    on_decision=show_decision,
+                    on_error=show_error,
+                    on_model_start=show_model_start,
                 )
-                run_next_round(session, coordinator, on_decision=show_decision)
                 progress_message.markdown(
                     '<div class="model-progress">All four decisions collected.</div>',
                     unsafe_allow_html=True,
@@ -195,11 +221,25 @@ def render_decision(
     )
 
 
+def render_decision_error(slot: DeltaGenerator, message: str) -> None:
+    slot.markdown(
+        f"""
+        <div class="decision-box">
+            <div class="decision-label">DECISION REJECTED</div>
+            <div class="decision-strategy">{escape(message)}</div>
+            <div class="decision-budget">Fallback: Hold · Budget: $0</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_company_grid(
     session: GameSession,
     config: AppConfig,
 ) -> dict[str, DeltaGenerator]:
     latest_decisions = session.latest_round.decisions if session.latest_round else {}
+    latest_errors = session.latest_round.errors if session.latest_round else {}
     decision_slots = {}
     columns = st.columns(config.game.company_count, gap="medium")
     for column, company in zip(columns, session.state.companies, strict=True):
@@ -215,6 +255,8 @@ def render_company_grid(
             decision_slots[company.id] = slot
             if company.id in latest_decisions:
                 render_decision(slot, latest_decisions[company.id])
+            elif company.id in latest_errors:
+                render_decision_error(slot, latest_errors[company.id])
     return decision_slots
 
 
