@@ -91,6 +91,6 @@ def test_session_resolves_and_records_round_atomically() -> None:
     resolved = session.resolve_round(record, RoundResolver())
 
     assert resolved.round_number == 1
-    assert resolved.companies[0].cash == 400_000
+    assert resolved.companies[0].cash == 375_000
     assert resolved.companies[0].product_score == 25
     assert session.latest_round is record

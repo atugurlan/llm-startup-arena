@@ -61,7 +61,7 @@ def test_validator_reports_all_invalid_targets_and_budget(game_state) -> None:
     assert len(error.value.errors) == 5
     assert "exceeds available cash" in str(error.value)
     assert "Duplicate client targets" in str(error.value)
-    assert "Unknown clients" in str(error.value)
+    assert "Unknown or unavailable clients" in str(error.value)
     assert "Duplicate employee targets" in str(error.value)
     assert "Unknown employees" in str(error.value)
 
@@ -74,6 +74,23 @@ def test_validator_rejects_recruiting_own_employee(game_state) -> None:
     )
 
     with pytest.raises(DecisionValidationError, match="Cannot recruit own employees"):
+        DecisionValidator().validate(
+            company_id="nova",
+            decision=decision,
+            state=game_state,
+        )
+
+
+def test_validator_rejects_client_already_under_contract(game_state) -> None:
+    game_state.clients[0].company_id = "orbit"
+    game_state.clients[0].contract_rounds_remaining = 2
+    decision = CompanyDecision(
+        strategy="target unavailable client",
+        budget=BudgetAllocation(marketing=10_000),
+        target_client_ids=[game_state.clients[0].id],
+    )
+
+    with pytest.raises(DecisionValidationError, match="unavailable clients"):
         DecisionValidator().validate(
             company_id="nova",
             decision=decision,

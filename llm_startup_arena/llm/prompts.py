@@ -18,7 +18,11 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
         if competitor.id != company_id
         for employee in competitor.employees
     ]
-    client_ids = [client.id for client in state.clients]
+    available_clients = [client for client in state.clients if client.company_id is None]
+    client_ids = [client.id for client in available_clients]
+    client_revenue = {client.id: client.revenue_per_round for client in available_clients}
+    payroll = sum(employee.salary for employee in company.employees)
+    safe_discretionary_budget = max(0, company.cash - payroll)
 
     return f"""
 You control company {company_id!r}.
@@ -37,6 +41,14 @@ DECISION RULES — violating any rule rejects the entire decision:
 8. Use [] for unused target lists and null for unused optional actions or offers.
 9. Keep strategy short and descriptive.
 
+PAYROLL OBLIGATION:
+- Employee salaries are paid after your decision budget at the end of every round.
+- Your payroll this round is {payroll}.
+- Your safe discretionary budget after reserving payroll is {safe_discretionary_budget}.
+- Prefer a total decision budget at or below {safe_discretionary_budget} to pay salaries.
+- If remaining cash cannot cover payroll, cash becomes 0, employee morale drops by 20,
+  employee loyalty drops by 10, and company reputation drops by 5.
+
 YOUR EMPLOYEE IDS (never recruitment targets):
 {own_employee_ids}
 
@@ -45,6 +57,13 @@ RECRUITABLE EMPLOYEE IDS (the only valid recruitment targets):
 
 VALID CLIENT IDS:
 {client_ids}
+
+CLIENT ACQUISITION AND REVENUE:
+- Only target IDs from VALID CLIENT IDS; clients already under contract are unavailable.
+- A targeted available client signs a three-round contract.
+- If multiple companies target the same client, the highest product score plus reputation wins.
+- Contract revenue is paid every round, including the acquisition round.
+- Available client revenue per round: {client_revenue}
 
 Example of consistent unused fields:
 target_employee_ids=[], target_client_ids=[], sabotage_action=null, partnership_offer=null

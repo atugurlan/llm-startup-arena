@@ -28,3 +28,26 @@ def test_company_prompt_explains_budget_and_sabotage_rules() -> None:
     assert "at most 500000" in prompt
     assert "If sabotage budget is 0, sabotage_action must be null" in prompt
     assert "Never put one of YOUR EMPLOYEE IDS" in prompt
+
+
+def test_company_prompt_explains_payroll_reserve_and_penalties() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "Your payroll this round is 25000" in prompt
+    assert "safe discretionary budget after reserving payroll is 475000" in prompt
+    assert "employee morale drops by 20" in prompt
+    assert "employee loyalty drops by 10" in prompt
+    assert "company reputation drops by 5" in prompt
+
+
+def test_company_prompt_explains_client_contracts_and_revenue() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "signs a three-round contract" in prompt
+    assert "product score plus reputation wins" in prompt
+    assert "including the acquisition round" in prompt
+    assert "'client-1': 8000" in prompt

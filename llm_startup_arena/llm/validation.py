@@ -57,10 +57,10 @@ class DecisionValidator:
         state: GameState,
     ) -> list[str]:
         errors = _duplicate_errors(decision.target_client_ids, "client")
-        known_clients = {client.id for client in state.clients}
-        unknown_clients = set(decision.target_client_ids) - known_clients
-        if unknown_clients:
-            errors.append(f"Unknown clients: {', '.join(sorted(unknown_clients))}")
+        available_clients = {client.id for client in state.clients if client.company_id is None}
+        invalid_clients = set(decision.target_client_ids) - available_clients
+        if invalid_clients:
+            errors.append(f"Unknown or unavailable clients: {', '.join(sorted(invalid_clients))}")
         return errors
 
     @staticmethod
