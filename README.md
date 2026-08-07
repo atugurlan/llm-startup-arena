@@ -85,7 +85,8 @@ flowchart TB
     Display --> More{"Companies remaining?"}
     Hold --> More
     More -->|Yes| Model
-    More -->|No, at least one valid| Save["Save round record and advance"]
+    More -->|No, at least one valid| Resolve["Resolve economic effects"]
+    Resolve --> Save["Save state, store round record, and advance"]
     More -->|No valid decisions| Stop["Keep current round"]
 ```
 
@@ -97,9 +98,99 @@ Decision validation currently enforces:
 - sabotage actions and sabotage budgets must be consistent;
 - one invalid model response does not stop the other companies.
 
-The current stage collects decisions and advances the round counter. Economic effects such
-as spending, payroll, product growth, recruitment, and client acquisition are implemented
-in later stages of the deterministic engine.
+## Economic rules
+
+The deterministic `RoundResolver` applies valid decisions in a fixed order. Models choose
+the strategy and budget, but never calculate or directly apply the outcome.
+
+```mermaid
+flowchart LR
+    Budget["Deduct decision budget"] --> Investment["Apply product and marketing"]
+    Investment --> Clients["Award clients and collect revenue"]
+    Clients --> Payroll["Pay employee salaries"]
+    Payroll --> State["Save updated company state"]
+```
+
+### Investments
+
+- the full decision budget is deducted from company cash once;
+- every `$20,000` invested in `product` adds one `product_score` point;
+- every `$20,000` invested in `marketing` adds one reputation point;
+- product score and reputation are capped at `100`;
+- the effects of recruitment and sabotage are added in later stages.
+
+### Training
+
+- every `$25,000` assigned to training gives every current employee `+1 skill` and
+  `+1 experience`;
+- skill is capped at `100`, while experience has no upper limit;
+- an incomplete `$25,000` training unit is still spent but produces no employee increase.
+
+### Retention
+
+- every `$20,000` assigned to retention gives every current employee `+2 morale` and
+  `+2 loyalty`;
+- morale and loyalty are capped at `100`;
+- an incomplete `$20,000` retention unit is still spent but produces no increase.
+
+### Employee role bonuses
+
+Role power is the sum of the skill values of all employees in that role. Bonuses use the
+team's skill at the beginning of the round; training improvements affect later rounds.
+Employees with morale below `40` contribute only half of their skill to role power.
+
+| Role | Implemented effect |
+|---|---|
+| Engineer | With product spending, every 100 role power adds `+1 product_score` |
+| Product | With product spending, every 50 role power adds `+1 product_score` |
+| Marketing | With marketing spending, every 50 role power adds `+1 reputation` |
+| Sales | Every 50 role power adds `+1` to the client acquisition score |
+| Operations | Every 5 role power reduces payroll by 1%, capped at 20% |
+
+Product, engineering, and marketing bonuses require spending in the relevant category.
+Sales applies only when competing for a targeted client, while operations applies whenever
+payroll is processed.
+
+### Clients and revenue
+
+- the game starts with 20 available clients;
+- a company may target up to two available clients per round;
+- if several companies target the same client, the highest `product_score + reputation`
+  wins; ties follow the stable company order;
+- the winning company receives a three-round contract;
+- `revenue_per_round` is paid immediately and once per contract round;
+- after the third payment, the client becomes available again;
+- clients already under contract cannot be targeted.
+
+### Payroll
+
+- all employee salaries are paid after client revenue is collected;
+- the initial five-person team costs `$25,000` per round;
+- the prompt tells each model its exact payroll and safe discretionary budget;
+- if remaining cash cannot cover payroll, company cash becomes `0`, employee morale drops
+  by `20`, loyalty drops by `15`, and reputation drops by `5`;
+- morale, loyalty, and reputation cannot drop below `0`.
+
+### Morale, loyalty, and departures
+
+- an employee with morale below `40` contributes only `50%` of their skill to role bonuses;
+- an employee with loyalty below `40` after payroll leaves at the end of the round;
+- retention is resolved before payroll, so it can raise loyalty above the departure threshold;
+- unpaid payroll can lower loyalty enough to trigger departures in the same round;
+- departures appear beneath the company's latest decision in the interface.
+
+### Round outcomes
+
+After a round resolves, each company card shows a detailed outcome summary alongside its
+latest decision. The summary includes budget spending, product and reputation gains, role
+bonuses, training and retention effects, client wins and revenue, expired contracts, payroll,
+employee departures, and round-end cash. Company cards also expose reputation directly so
+the principal economic effects can be verified without inspecting the internal game state.
+Repeated client events are aggregated to keep all four outcome cells compact and aligned.
+
+Before validation, recoverable model mistakes are normalized: duplicate or unavailable client
+targets and invalid employee targets are removed, while an incomplete sabotage allocation is
+reset to zero. Overspending and malformed responses remain hard errors and reject the decision.
 
 ## Architecture
 
@@ -116,6 +207,7 @@ flowchart LR
     subgraph Game["Game engine"]
         direction TB
         Factory["Game Factory"]
+        Resolver["Round Resolver"]
         State["Game State"]
     end
 
@@ -128,10 +220,9 @@ flowchart LR
         Record["Round Decision Record"]
     end
 
-    subgraph Future["Economic resolution — next stage"]
+    subgraph Future["Later orchestration and storage"]
         direction TB
         Arena["Arena"]
-        Resolver["Round Resolver"]
         Repository["Match Repository"]
     end
 
@@ -140,6 +231,8 @@ flowchart LR
     Session -->|creates / resets| Factory
     Session -->|stores| State
     Factory -->|creates| State
+    Session -->|applies decisions| Resolver
+    Resolver -->|updates| State
 
     Coordinator -->|shared snapshot| State
     Coordinator -->|requests decision| Ollama
@@ -150,7 +243,6 @@ flowchart LR
     Session -->|stores history| Record
 
     App -.->|not connected yet| Arena
-    Arena -.-> Resolver
     Arena -.-> Repository
 ```
 

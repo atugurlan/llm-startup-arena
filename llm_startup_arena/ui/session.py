@@ -2,7 +2,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 from llm_startup_arena.domain import GameState
-from llm_startup_arena.engine import GameFactory
+from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import RoundDecisionRecord
 
 GAME_STATE_KEY = "game_state"
@@ -58,6 +58,23 @@ class GameSession:
         if any(existing.round_number == record.round_number for existing in self.round_history):
             raise ValueError(f"Round {record.round_number} has already been recorded")
         self.round_history.append(record)
+
+    def resolve_round(
+        self,
+        record: RoundDecisionRecord,
+        resolver: RoundResolver,
+    ) -> GameState:
+        if self.is_finished:
+            raise RuntimeError("The game has already finished")
+        if record.round_number != self.state.round_number + 1:
+            raise ValueError(
+                f"Expected round {self.state.round_number + 1}, received {record.round_number}"
+            )
+
+        resolved_state = resolver.resolve_round(self.state, record.decisions)
+        self.record_round(record)
+        self._storage[GAME_STATE_KEY] = resolved_state
+        return resolved_state
 
     def advance_round(self) -> GameState:
         if self.is_finished:

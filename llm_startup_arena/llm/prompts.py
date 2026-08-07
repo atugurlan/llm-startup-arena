@@ -1,4 +1,6 @@
-from llm_startup_arena.domain import GameState
+from llm_startup_arena.domain import EmployeeRole, GameState
+
+LOW_MORALE_THRESHOLD = 40
 
 SYSTEM_PROMPT = """
 You are the founder and CEO of one company in a competitive startup simulation.
@@ -18,7 +20,19 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
         if competitor.id != company_id
         for employee in competitor.employees
     ]
-    client_ids = [client.id for client in state.clients]
+    available_clients = [client for client in state.clients if client.company_id is None]
+    client_ids = [client.id for client in available_clients]
+    client_revenue = {client.id: client.revenue_per_round for client in available_clients}
+    payroll = sum(employee.salary for employee in company.employees)
+    safe_discretionary_budget = max(0, company.cash - payroll)
+    role_power = {
+        role.value: sum(
+            employee.skill if employee.morale >= LOW_MORALE_THRESHOLD else employee.skill // 2
+            for employee in company.employees
+            if employee.role == role
+        )
+        for role in EmployeeRole
+    }
 
     return f"""
 You control company {company_id!r}.
@@ -37,6 +51,14 @@ DECISION RULES — violating any rule rejects the entire decision:
 8. Use [] for unused target lists and null for unused optional actions or offers.
 9. Keep strategy short and descriptive.
 
+PAYROLL OBLIGATION:
+- Employee salaries are paid after your decision budget at the end of every round.
+- Your payroll this round is {payroll}.
+- Your safe discretionary budget after reserving payroll is {safe_discretionary_budget}.
+- Prefer a total decision budget at or below {safe_discretionary_budget} to pay salaries.
+- If remaining cash cannot cover payroll, cash becomes 0, employee morale drops by 20,
+  employee loyalty drops by 15, and company reputation drops by 5.
+
 YOUR EMPLOYEE IDS (never recruitment targets):
 {own_employee_ids}
 
@@ -45,6 +67,35 @@ RECRUITABLE EMPLOYEE IDS (the only valid recruitment targets):
 
 VALID CLIENT IDS:
 {client_ids}
+
+CLIENT ACQUISITION AND REVENUE:
+- Only target IDs from VALID CLIENT IDS; clients already under contract are unavailable.
+- A targeted available client signs a three-round contract.
+- If multiple companies target the same client, the highest product score plus reputation wins.
+- Contract revenue is paid every round, including the acquisition round.
+- Available client revenue per round: {client_revenue}
+
+EMPLOYEE TRAINING:
+- Every 25000 assigned to training gives every current employee +1 skill and +1 experience.
+- Skill is capped at 100. Experience has no upper limit.
+- Training amounts below 25000 are still spent but do not produce a level.
+
+EMPLOYEE RETENTION:
+- Every 20000 assigned to retention gives every current employee +2 morale and +2 loyalty.
+- Morale and loyalty are capped at 100.
+- Retention amounts below 20000 are still spent but do not produce an increase.
+- An employee with loyalty below 40 after payroll leaves the company at the end of the round.
+- Retention is applied before payroll and can prevent an employee from leaving.
+
+EMPLOYEE ROLE BONUSES:
+- Current effective role power: {role_power}
+- Employees with morale below 40 contribute only 50% of their skill to role power.
+- With product spending: every 100 engineer power and every 50 product power adds
+  +1 product score beyond the base investment gain.
+- With marketing spending: every 50 marketing power adds +1 reputation beyond the base gain.
+- Every 50 sales power adds +1 to the score used to compete for targeted clients.
+- Every 5 operations power reduces payroll by 1%, capped at a 20% discount.
+- Training is applied after investments, so new skill affects role bonuses next round.
 
 Example of consistent unused fields:
 target_employee_ids=[], target_client_ids=[], sabotage_action=null, partnership_offer=null

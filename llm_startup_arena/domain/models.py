@@ -55,3 +55,4 @@ class GameState(BaseModel):
     companies: list[Company]
     clients: list[Client]
     market_event: MarketEvent | None = None
+    last_round_events: dict[str, list[str]] = Field(default_factory=dict)

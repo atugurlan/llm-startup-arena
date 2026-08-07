@@ -9,7 +9,7 @@ from streamlit.delta_generator import DeltaGenerator
 
 from llm_startup_arena.config import AppConfig
 from llm_startup_arena.domain import Company, GameState
-from llm_startup_arena.engine import GameFactory
+from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import CompanyDecision, DecisionCoordinator, RoundDecisionRecord
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
 
@@ -48,7 +48,7 @@ def inject_styles() -> None:
         .cash { color: #f8fafc; font-size: 1.75rem; font-weight: 750; }
         .cash-label { color: #7f8aa6; font-size: .72rem; letter-spacing: .09em; }
         .card-divider { border-top: 1px solid #29334d; margin: 1.15rem 0; }
-        .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }
         .metric-value { color: #e8ecf7; font-size: 1.08rem; font-weight: 650; }
         .metric-label { color: #7f8aa6; font-size: .7rem; }
         .status-pill {
@@ -58,8 +58,9 @@ def inject_styles() -> None:
         .round-note { color: #7f8aa6; font-size: .82rem; margin-top: .5rem; }
         .model-progress { color: #aeb8d4; font-size: .82rem; margin-top: .5rem; }
         .decision-box {
-            min-height: 125px; margin-top: .75rem; padding: .85rem 1rem;
+            height: 310px; margin-top: .75rem; padding: .85rem 1rem;
             border: 1px solid #29334d; border-radius: 14px; background: #101627;
+            overflow-y: auto; box-sizing: border-box;
         }
         .decision-label { color: #7f8aa6; font-size: .68rem; letter-spacing: .08em; }
         .decision-strategy { color: #e8ecf7; font-size: .88rem; margin: .3rem 0 .65rem; }
@@ -91,6 +92,7 @@ def render_company_card(
                 <div><div class="metric-value">{len(company.employees)}</div><div class="metric-label">EMPLOYEES</div></div>
                 <div><div class="metric-value">{len(company.client_ids)}</div><div class="metric-label">CLIENTS</div></div>
                 <div><div class="metric-value">{company.product_score}</div><div class="metric-label">PRODUCT</div></div>
+                <div><div class="metric-value">{company.reputation}</div><div class="metric-label">REPUTATION</div></div>
             </div>
             <div class="status-pill" style="color:{highlight}; background:{accent}22">{status}</div>
         </div>
@@ -110,6 +112,7 @@ def round_label(state: GameState, total_rounds: int) -> str:
 def run_next_round(
     session: GameSession,
     coordinator: DecisionCoordinator,
+    resolver: RoundResolver,
     on_decision: Callable[[str, CompanyDecision], None] | None = None,
     on_error: Callable[[str, str], None] | None = None,
     on_model_start: Callable[[str], None] | None = None,
@@ -123,14 +126,14 @@ def run_next_round(
     )
     if not record.decisions:
         raise ValueError("All four models failed. The round was not advanced.")
-    session.record_round(record)
-    session.advance_round()
+    session.resolve_round(record, resolver)
     return record
 
 
 def render_round_controls(
     session: GameSession,
     coordinator: DecisionCoordinator,
+    resolver: RoundResolver,
     config: AppConfig,
     decision_slots: dict[str, DeltaGenerator],
 ) -> None:
@@ -177,6 +180,7 @@ def render_round_controls(
                 run_next_round(
                     session,
                     coordinator,
+                    resolver,
                     on_decision=show_decision,
                     on_error=show_error,
                     on_model_start=show_model_start,
@@ -202,6 +206,7 @@ def render_round_controls(
 def render_decision(
     slot: DeltaGenerator,
     decision: CompanyDecision,
+    events: list[str] | None = None,
 ) -> None:
     allocations = {
         category: amount for category, amount in decision.budget.model_dump().items() if amount > 0
@@ -209,25 +214,43 @@ def render_decision(
     budget_text = " · ".join(
         f"{escape(category.title())}: ${amount:,.0f}" for category, amount in allocations.items()
     )
+    event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
+    outcome = (
+        f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
+        if event_text
+        else ""
+    )
     slot.markdown(
         f"""
         <div class="decision-box">
             <div class="decision-label">LATEST DECISION</div>
             <div class="decision-strategy">{escape(decision.strategy)}</div>
             <div class="decision-budget">{budget_text or "No budget allocated"}</div>
+            {outcome}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_decision_error(slot: DeltaGenerator, message: str) -> None:
+def render_decision_error(
+    slot: DeltaGenerator,
+    message: str,
+    events: list[str] | None = None,
+) -> None:
+    event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
+    outcome = (
+        f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
+        if event_text
+        else ""
+    )
     slot.markdown(
         f"""
         <div class="decision-box">
             <div class="decision-label">DECISION REJECTED</div>
             <div class="decision-strategy">{escape(message)}</div>
             <div class="decision-budget">Fallback: Hold · Budget: $0</div>
+            {outcome}
         </div>
         """,
         unsafe_allow_html=True,
@@ -254,15 +277,24 @@ def render_company_grid(
             slot = st.empty()
             decision_slots[company.id] = slot
             if company.id in latest_decisions:
-                render_decision(slot, latest_decisions[company.id])
+                render_decision(
+                    slot,
+                    latest_decisions[company.id],
+                    session.state.last_round_events.get(company.id),
+                )
             elif company.id in latest_errors:
-                render_decision_error(slot, latest_errors[company.id])
+                render_decision_error(
+                    slot,
+                    latest_errors[company.id],
+                    session.state.last_round_events.get(company.id),
+                )
     return decision_slots
 
 
 def render_arena(
     session: GameSession,
     coordinator: DecisionCoordinator,
+    resolver: RoundResolver,
     config: AppConfig,
 ) -> None:
     state = session.state
@@ -280,7 +312,7 @@ def render_arena(
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
-        render_round_controls(session, coordinator, config, decision_slots)
+        render_round_controls(session, coordinator, resolver, config, decision_slots)
 
 
 def run() -> None:
@@ -291,4 +323,5 @@ def run() -> None:
     session = GameSession(st.session_state, factory, config.game.total_rounds)
     provider = OllamaProvider(base_url=config.ollama_base_url)
     coordinator = DecisionCoordinator(provider)
-    render_arena(session, coordinator, config)
+    resolver = RoundResolver()
+    render_arena(session, coordinator, resolver, config)

@@ -2,7 +2,7 @@ import pytest
 
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
 from llm_startup_arena.domain import GameState
-from llm_startup_arena.engine import GameFactory
+from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import BudgetAllocation, CompanyDecision, RoundDecisionRecord
 from llm_startup_arena.ui.app import round_label, run_next_round
 from llm_startup_arena.ui.session import GameSession
@@ -53,7 +53,11 @@ def test_round_label_describes_game_progress() -> None:
 def test_run_next_round_records_decisions_before_advancing() -> None:
     session = build_session()
 
-    record = run_next_round(session, FakeCoordinator())  # type: ignore[arg-type]
+    record = run_next_round(
+        session,
+        FakeCoordinator(),  # type: ignore[arg-type]
+        RoundResolver(),
+    )
 
     assert session.state.round_number == 1
     assert session.latest_round is record
@@ -63,7 +67,11 @@ def test_run_next_round_does_not_advance_when_all_models_fail() -> None:
     session = build_session()
 
     with pytest.raises(ValueError, match="All four models failed"):
-        run_next_round(session, FailedCoordinator())  # type: ignore[arg-type]
+        run_next_round(
+            session,
+            FailedCoordinator(),  # type: ignore[arg-type]
+            RoundResolver(),
+        )
 
     assert session.state.round_number == 0
     assert session.round_history == []

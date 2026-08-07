@@ -11,6 +11,46 @@ class DecisionValidationError(ValueError):
         super().__init__("; ".join(errors))
 
 
+class DecisionNormalizer:
+    """Repair harmless LLM target and sabotage inconsistencies before validation."""
+
+    def normalize(
+        self,
+        *,
+        company_id: str,
+        decision: CompanyDecision,
+        state: GameState,
+    ) -> CompanyDecision:
+        company = DecisionValidator._find_company(company_id, state)
+        normalized = decision.model_copy(deep=True)
+        available_clients = {client.id for client in state.clients if client.company_id is None}
+        recruitable_employees = {
+            employee.id
+            for owner in state.companies
+            if owner.id != company.id
+            for employee in owner.employees
+        }
+
+        normalized.target_client_ids = _unique_valid_ids(
+            normalized.target_client_ids,
+            available_clients,
+        )
+        normalized.target_employee_ids = _unique_valid_ids(
+            normalized.target_employee_ids,
+            recruitable_employees,
+        )
+
+        has_sabotage_budget = normalized.budget.sabotage > 0
+        has_sabotage_action = bool(
+            normalized.sabotage_action and normalized.sabotage_action.strip()
+        )
+        if has_sabotage_budget != has_sabotage_action:
+            normalized.budget.sabotage = 0
+            normalized.sabotage_action = None
+
+        return normalized
+
+
 class DecisionValidator:
     """Validate an LLM decision against the current game state."""
 
@@ -57,10 +97,10 @@ class DecisionValidator:
         state: GameState,
     ) -> list[str]:
         errors = _duplicate_errors(decision.target_client_ids, "client")
-        known_clients = {client.id for client in state.clients}
-        unknown_clients = set(decision.target_client_ids) - known_clients
-        if unknown_clients:
-            errors.append(f"Unknown clients: {', '.join(sorted(unknown_clients))}")
+        available_clients = {client.id for client in state.clients if client.company_id is None}
+        invalid_clients = set(decision.target_client_ids) - available_clients
+        if invalid_clients:
+            errors.append(f"Unknown or unavailable clients: {', '.join(sorted(invalid_clients))}")
         return errors
 
     @staticmethod
@@ -101,3 +141,7 @@ def _duplicate_errors(target_ids: list[str], target_type: str) -> list[str]:
     if len(target_ids) == len(set(target_ids)):
         return []
     return [f"Duplicate {target_type} targets are not allowed"]
+
+
+def _unique_valid_ids(target_ids: list[str], valid_ids: set[str]) -> list[str]:
+    return list(dict.fromkeys(target_id for target_id in target_ids if target_id in valid_ids))
