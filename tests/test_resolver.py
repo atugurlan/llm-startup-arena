@@ -264,3 +264,99 @@ def test_retention_below_one_level_has_no_employee_effect() -> None:
     )
 
     assert resolved.companies[0].employees == state.companies[0].employees
+
+
+def make_employee(
+    employee_id: str,
+    role: EmployeeRole,
+    *,
+    skill: int,
+    salary: int = 0,
+) -> Employee:
+    return Employee(
+        id=employee_id,
+        name=employee_id,
+        role=role,
+        skill=skill,
+        salary=salary,
+    )
+
+
+def test_product_and_marketing_roles_amplify_relevant_investments() -> None:
+    state = build_state(cash=200_000)
+    state.companies[0].employees = [
+        make_employee("engineer-1", EmployeeRole.ENGINEER, skill=60),
+        make_employee("engineer-2", EmployeeRole.ENGINEER, skill=40),
+        make_employee("product-1", EmployeeRole.PRODUCT, skill=50),
+        make_employee("marketing-1", EmployeeRole.MARKETING, skill=50),
+    ]
+
+    resolved = RoundResolver().resolve_investments(
+        state,
+        {"nova": build_decision(product=20_000, marketing=20_000)},
+    )
+
+    assert resolved.companies[0].product_score == 23
+    assert resolved.companies[0].reputation == 52
+
+
+def test_role_bonus_requires_relevant_investment() -> None:
+    state = build_state(cash=100_000)
+    state.companies[0].employees = [
+        make_employee("engineer-1", EmployeeRole.ENGINEER, skill=100),
+        make_employee("marketing-1", EmployeeRole.MARKETING, skill=100),
+    ]
+
+    resolved = RoundResolver().resolve_investments(
+        state,
+        {"nova": build_decision(training=25_000)},
+    )
+
+    assert resolved.companies[0].product_score == 20
+    assert resolved.companies[0].reputation == 50
+
+
+def test_sales_role_can_win_client_competition() -> None:
+    state = build_state(cash=100_000, product_score=20, reputation=50)
+    state.companies[0].employees = [make_employee("sales-1", EmployeeRole.SALES, skill=50)]
+    state.companies.append(
+        Company(
+            id="orbit",
+            name="Orbit",
+            model="test-model-2",
+            cash=100_000,
+            product_score=21,
+            reputation=50,
+        )
+    )
+    state.clients = [
+        Client(id="client-1", name="Client One", segment="startup", revenue_per_round=8_000)
+    ]
+    decisions = {
+        company_id: CompanyDecision(
+            strategy="acquire",
+            budget=BudgetAllocation(),
+            target_client_ids=["client-1"],
+        )
+        for company_id in ("nova", "orbit")
+    }
+
+    resolved = RoundResolver().resolve_clients(state, decisions)
+
+    assert resolved.clients[0].company_id == "nova"
+
+
+def test_operations_role_reduces_payroll_up_to_twenty_percent() -> None:
+    state = build_state(cash=100_000)
+    state.companies[0].employees = [
+        make_employee(
+            "operations-1",
+            EmployeeRole.OPERATIONS,
+            skill=100,
+            salary=10_000,
+        )
+    ]
+
+    resolved = RoundResolver().process_payroll(state)
+
+    assert resolved.companies[0].cash == 92_000

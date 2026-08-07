@@ -71,3 +71,15 @@ def test_company_prompt_explains_retention_formula() -> None:
     assert "Every 20000 assigned to retention" in prompt
     assert "+2 morale and +2 loyalty" in prompt
     assert "Retention amounts below 20000" in prompt
+
+
+def test_company_prompt_explains_role_power_and_bonuses() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "Current role power" in prompt
+    assert "'engineer': 107" in prompt
+    assert "every 100 engineer power" in prompt
+    assert "Every 50 sales power" in prompt
+    assert "operations power reduces payroll" in prompt

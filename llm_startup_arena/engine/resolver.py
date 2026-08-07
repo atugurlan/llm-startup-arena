@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 
-from llm_startup_arena.domain import GameState
+from llm_startup_arena.domain import Company, EmployeeRole, GameState
 from llm_startup_arena.llm.provider import BudgetAllocation, CompanyDecision
 
 INVESTMENT_PER_SCORE_POINT = 20_000
@@ -11,6 +11,12 @@ CLIENT_CONTRACT_ROUNDS = 3
 TRAINING_COST_PER_LEVEL = 25_000
 RETENTION_COST_PER_LEVEL = 20_000
 RETENTION_POINTS_PER_LEVEL = 2
+ENGINEERING_POWER_PER_PRODUCT_POINT = 100
+PRODUCT_POWER_PER_PRODUCT_POINT = 50
+MARKETING_POWER_PER_REPUTATION_POINT = 50
+SALES_POWER_PER_ACQUISITION_POINT = 50
+OPERATIONS_POWER_PER_PAYROLL_PERCENT = 5
+MAX_PAYROLL_DISCOUNT_PERCENT = 20
 _HOLD_DECISION = CompanyDecision(strategy="hold", budget=BudgetAllocation())
 
 
@@ -54,11 +60,15 @@ class RoundResolver:
             company.cash -= total_budget
             company.product_score = min(
                 100,
-                company.product_score + decision.budget.product // INVESTMENT_PER_SCORE_POINT,
+                company.product_score
+                + decision.budget.product // INVESTMENT_PER_SCORE_POINT
+                + _product_role_bonus(company, decision),
             )
             company.reputation = min(
                 100,
-                company.reputation + decision.budget.marketing // INVESTMENT_PER_SCORE_POINT,
+                company.reputation
+                + decision.budget.marketing // INVESTMENT_PER_SCORE_POINT
+                + _marketing_role_bonus(company, decision),
             )
         return resolved
 
@@ -123,7 +133,9 @@ class RoundResolver:
 
             winner = max(
                 contenders,
-                key=lambda company: company.product_score + company.reputation,
+                key=lambda company: (
+                    company.product_score + company.reputation + _sales_role_bonus(company)
+                ),
             )
             client.company_id = winner.id
             client.contract_rounds_remaining = CLIENT_CONTRACT_ROUNDS
@@ -152,7 +164,13 @@ class RoundResolver:
     def process_payroll(self, state: GameState) -> GameState:
         resolved = state.model_copy(deep=True)
         for company in resolved.companies:
-            payroll = sum(employee.salary for employee in company.employees)
+            gross_payroll = sum(employee.salary for employee in company.employees)
+            discount_percent = min(
+                MAX_PAYROLL_DISCOUNT_PERCENT,
+                _role_power(company, EmployeeRole.OPERATIONS)
+                // OPERATIONS_POWER_PER_PAYROLL_PERCENT,
+            )
+            payroll = gross_payroll * (100 - discount_percent) // 100
             if company.cash >= payroll:
                 company.cash -= payroll
                 continue
@@ -172,3 +190,26 @@ class RoundResolver:
                     employee.loyalty - UNPAID_PAYROLL_LOYALTY_PENALTY,
                 )
         return resolved
+
+
+def _role_power(company: Company, role: EmployeeRole) -> int:
+    return sum(employee.skill for employee in company.employees if employee.role == role)
+
+
+def _product_role_bonus(company: Company, decision: CompanyDecision) -> int:
+    if decision.budget.product == 0:
+        return 0
+    return (
+        _role_power(company, EmployeeRole.ENGINEER) // ENGINEERING_POWER_PER_PRODUCT_POINT
+        + _role_power(company, EmployeeRole.PRODUCT) // PRODUCT_POWER_PER_PRODUCT_POINT
+    )
+
+
+def _marketing_role_bonus(company: Company, decision: CompanyDecision) -> int:
+    if decision.budget.marketing == 0:
+        return 0
+    return _role_power(company, EmployeeRole.MARKETING) // MARKETING_POWER_PER_REPUTATION_POINT
+
+
+def _sales_role_bonus(company: Company) -> int:
+    return _role_power(company, EmployeeRole.SALES) // SALES_POWER_PER_ACQUISITION_POINT

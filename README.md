@@ -133,6 +133,23 @@ flowchart LR
 - morale and loyalty are capped at `100`;
 - an incomplete `$20,000` retention unit is still spent but produces no increase.
 
+### Employee role bonuses
+
+Role power is the sum of the skill values of all employees in that role. Bonuses use the
+team's skill at the beginning of the round; training improvements affect later rounds.
+
+| Role | Implemented effect |
+|---|---|
+| Engineer | With product spending, every 100 role power adds `+1 product_score` |
+| Product | With product spending, every 50 role power adds `+1 product_score` |
+| Marketing | With marketing spending, every 50 role power adds `+1 reputation` |
+| Sales | Every 50 role power adds `+1` to the client acquisition score |
+| Operations | Every 5 role power reduces payroll by 1%, capped at 20% |
+
+Product, engineering, and marketing bonuses require spending in the relevant category.
+Sales applies only when competing for a targeted client, while operations applies whenever
+payroll is processed.
+
 ### Clients and revenue
 
 - the game starts with 20 available clients;

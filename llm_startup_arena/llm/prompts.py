@@ -1,4 +1,4 @@
-from llm_startup_arena.domain import GameState
+from llm_startup_arena.domain import EmployeeRole, GameState
 
 SYSTEM_PROMPT = """
 You are the founder and CEO of one company in a competitive startup simulation.
@@ -23,6 +23,10 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
     client_revenue = {client.id: client.revenue_per_round for client in available_clients}
     payroll = sum(employee.salary for employee in company.employees)
     safe_discretionary_budget = max(0, company.cash - payroll)
+    role_power = {
+        role.value: sum(employee.skill for employee in company.employees if employee.role == role)
+        for role in EmployeeRole
+    }
 
     return f"""
 You control company {company_id!r}.
@@ -74,6 +78,15 @@ EMPLOYEE RETENTION:
 - Every 20000 assigned to retention gives every current employee +2 morale and +2 loyalty.
 - Morale and loyalty are capped at 100.
 - Retention amounts below 20000 are still spent but do not produce an increase.
+
+EMPLOYEE ROLE BONUSES:
+- Current role power (sum of skill by role): {role_power}
+- With product spending: every 100 engineer power and every 50 product power adds
+  +1 product score beyond the base investment gain.
+- With marketing spending: every 50 marketing power adds +1 reputation beyond the base gain.
+- Every 50 sales power adds +1 to the score used to compete for targeted clients.
+- Every 5 operations power reduces payroll by 1%, capped at a 20% discount.
+- Training is applied after investments, so new skill affects role bonuses next round.
 
 Example of consistent unused fields:
 target_employee_ids=[], target_client_ids=[], sabotage_action=null, partnership_offer=null
