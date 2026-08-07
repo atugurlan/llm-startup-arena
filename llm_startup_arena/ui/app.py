@@ -9,7 +9,7 @@ from streamlit.delta_generator import DeltaGenerator
 
 from llm_startup_arena.config import AppConfig
 from llm_startup_arena.domain import Company, GameState
-from llm_startup_arena.engine import GameFactory
+from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import CompanyDecision, DecisionCoordinator, RoundDecisionRecord
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
 
@@ -110,6 +110,7 @@ def round_label(state: GameState, total_rounds: int) -> str:
 def run_next_round(
     session: GameSession,
     coordinator: DecisionCoordinator,
+    resolver: RoundResolver,
     on_decision: Callable[[str, CompanyDecision], None] | None = None,
     on_error: Callable[[str, str], None] | None = None,
     on_model_start: Callable[[str], None] | None = None,
@@ -123,14 +124,14 @@ def run_next_round(
     )
     if not record.decisions:
         raise ValueError("All four models failed. The round was not advanced.")
-    session.record_round(record)
-    session.advance_round()
+    session.resolve_round(record, resolver)
     return record
 
 
 def render_round_controls(
     session: GameSession,
     coordinator: DecisionCoordinator,
+    resolver: RoundResolver,
     config: AppConfig,
     decision_slots: dict[str, DeltaGenerator],
 ) -> None:
@@ -177,6 +178,7 @@ def render_round_controls(
                 run_next_round(
                     session,
                     coordinator,
+                    resolver,
                     on_decision=show_decision,
                     on_error=show_error,
                     on_model_start=show_model_start,
@@ -263,6 +265,7 @@ def render_company_grid(
 def render_arena(
     session: GameSession,
     coordinator: DecisionCoordinator,
+    resolver: RoundResolver,
     config: AppConfig,
 ) -> None:
     state = session.state
@@ -280,7 +283,7 @@ def render_arena(
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
-        render_round_controls(session, coordinator, config, decision_slots)
+        render_round_controls(session, coordinator, resolver, config, decision_slots)
 
 
 def run() -> None:
@@ -291,4 +294,5 @@ def run() -> None:
     session = GameSession(st.session_state, factory, config.game.total_rounds)
     provider = OllamaProvider(base_url=config.ollama_base_url)
     coordinator = DecisionCoordinator(provider)
-    render_arena(session, coordinator, config)
+    resolver = RoundResolver()
+    render_arena(session, coordinator, resolver, config)

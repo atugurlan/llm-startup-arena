@@ -1,7 +1,7 @@
 import pytest
 
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
-from llm_startup_arena.engine import GameFactory
+from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import BudgetAllocation, CompanyDecision, RoundDecisionRecord
 from llm_startup_arena.ui.session import GameSession
 
@@ -78,3 +78,19 @@ def test_session_rejects_duplicate_round_record() -> None:
 
     with pytest.raises(ValueError, match="already been recorded"):
         session.record_round(build_round_record(1))
+
+
+def test_session_resolves_and_records_round_atomically() -> None:
+    session = build_session()
+    decision = CompanyDecision(
+        strategy="invest",
+        budget=BudgetAllocation(product=100_000),
+    )
+    record = RoundDecisionRecord(round_number=1, decisions={"nova": decision})
+
+    resolved = session.resolve_round(record, RoundResolver())
+
+    assert resolved.round_number == 1
+    assert resolved.companies[0].cash == 400_000
+    assert resolved.companies[0].product_score == 25
+    assert session.latest_round is record
