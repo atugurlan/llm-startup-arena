@@ -1,5 +1,7 @@
 from llm_startup_arena.domain import EmployeeRole, GameState
 
+LOW_MORALE_THRESHOLD = 40
+
 SYSTEM_PROMPT = """
 You are the founder and CEO of one company in a competitive startup simulation.
 Choose actions that maximize the company's value after ten rounds while keeping it solvent.
@@ -24,7 +26,11 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
     payroll = sum(employee.salary for employee in company.employees)
     safe_discretionary_budget = max(0, company.cash - payroll)
     role_power = {
-        role.value: sum(employee.skill for employee in company.employees if employee.role == role)
+        role.value: sum(
+            employee.skill if employee.morale >= LOW_MORALE_THRESHOLD else employee.skill // 2
+            for employee in company.employees
+            if employee.role == role
+        )
         for role in EmployeeRole
     }
 
@@ -51,7 +57,7 @@ PAYROLL OBLIGATION:
 - Your safe discretionary budget after reserving payroll is {safe_discretionary_budget}.
 - Prefer a total decision budget at or below {safe_discretionary_budget} to pay salaries.
 - If remaining cash cannot cover payroll, cash becomes 0, employee morale drops by 20,
-  employee loyalty drops by 10, and company reputation drops by 5.
+  employee loyalty drops by 15, and company reputation drops by 5.
 
 YOUR EMPLOYEE IDS (never recruitment targets):
 {own_employee_ids}
@@ -78,9 +84,12 @@ EMPLOYEE RETENTION:
 - Every 20000 assigned to retention gives every current employee +2 morale and +2 loyalty.
 - Morale and loyalty are capped at 100.
 - Retention amounts below 20000 are still spent but do not produce an increase.
+- An employee with loyalty below 40 after payroll leaves the company at the end of the round.
+- Retention is applied before payroll and can prevent an employee from leaving.
 
 EMPLOYEE ROLE BONUSES:
-- Current role power (sum of skill by role): {role_power}
+- Current effective role power: {role_power}
+- Employees with morale below 40 contribute only 50% of their skill to role power.
 - With product spending: every 100 engineer power and every 50 product power adds
   +1 product score beyond the base investment gain.
 - With marketing spending: every 50 marketing power adds +1 reputation beyond the base gain.

@@ -38,7 +38,7 @@ def test_company_prompt_explains_payroll_reserve_and_penalties() -> None:
     assert "Your payroll this round is 25000" in prompt
     assert "safe discretionary budget after reserving payroll is 475000" in prompt
     assert "employee morale drops by 20" in prompt
-    assert "employee loyalty drops by 10" in prompt
+    assert "employee loyalty drops by 15" in prompt
     assert "company reputation drops by 5" in prompt
 
 
@@ -78,8 +78,18 @@ def test_company_prompt_explains_role_power_and_bonuses() -> None:
 
     prompt = build_company_prompt("nova", state)
 
-    assert "Current role power" in prompt
+    assert "Current effective role power" in prompt
     assert "'engineer': 107" in prompt
     assert "every 100 engineer power" in prompt
     assert "Every 50 sales power" in prompt
     assert "operations power reduces payroll" in prompt
+
+
+def test_company_prompt_explains_morale_and_departure_rules() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "morale below 40 contribute only 50%" in prompt
+    assert "loyalty below 40 after payroll leaves" in prompt
+    assert "Retention is applied before payroll" in prompt

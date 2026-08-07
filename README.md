@@ -137,6 +137,7 @@ flowchart LR
 
 Role power is the sum of the skill values of all employees in that role. Bonuses use the
 team's skill at the beginning of the round; training improvements affect later rounds.
+Employees with morale below `40` contribute only half of their skill to role power.
 
 | Role | Implemented effect |
 |---|---|
@@ -167,8 +168,16 @@ payroll is processed.
 - the initial five-person team costs `$25,000` per round;
 - the prompt tells each model its exact payroll and safe discretionary budget;
 - if remaining cash cannot cover payroll, company cash becomes `0`, employee morale drops
-  by `20`, loyalty drops by `10`, and reputation drops by `5`;
+  by `20`, loyalty drops by `15`, and reputation drops by `5`;
 - morale, loyalty, and reputation cannot drop below `0`.
+
+### Morale, loyalty, and departures
+
+- an employee with morale below `40` contributes only `50%` of their skill to role bonuses;
+- an employee with loyalty below `40` after payroll leaves at the end of the round;
+- retention is resolved before payroll, so it can raise loyalty above the departure threshold;
+- unpaid payroll can lower loyalty enough to trigger departures in the same round;
+- departures appear beneath the company's latest decision in the interface.
 
 ## Architecture
 

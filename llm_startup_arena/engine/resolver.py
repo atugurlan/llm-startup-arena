@@ -5,7 +5,7 @@ from llm_startup_arena.llm.provider import BudgetAllocation, CompanyDecision
 
 INVESTMENT_PER_SCORE_POINT = 20_000
 UNPAID_PAYROLL_MORALE_PENALTY = 20
-UNPAID_PAYROLL_LOYALTY_PENALTY = 10
+UNPAID_PAYROLL_LOYALTY_PENALTY = 15
 UNPAID_PAYROLL_REPUTATION_PENALTY = 5
 CLIENT_CONTRACT_ROUNDS = 3
 TRAINING_COST_PER_LEVEL = 25_000
@@ -17,6 +17,9 @@ MARKETING_POWER_PER_REPUTATION_POINT = 50
 SALES_POWER_PER_ACQUISITION_POINT = 50
 OPERATIONS_POWER_PER_PAYROLL_PERCENT = 5
 MAX_PAYROLL_DISCOUNT_PERCENT = 20
+LOW_MORALE_THRESHOLD = 40
+LOW_MORALE_POWER_PERCENT = 50
+DEPARTURE_LOYALTY_THRESHOLD = 40
 _HOLD_DECISION = CompanyDecision(strategy="hold", budget=BudgetAllocation())
 
 
@@ -29,6 +32,7 @@ class RoundResolver:
         decisions: Mapping[str, CompanyDecision],
     ) -> GameState:
         resolved = state.model_copy(deep=True)
+        resolved.last_round_events = {}
         resolved = self.resolve_investments(resolved, decisions)
         resolved = self.resolve_training(resolved, decisions)
         resolved = self.resolve_retention(resolved, decisions)
@@ -36,6 +40,7 @@ class RoundResolver:
         resolved = self.resolve_clients(resolved, decisions)
         resolved = self.resolve_sabotage(resolved, decisions)
         resolved = self.process_payroll(resolved)
+        resolved = self.resolve_departures(resolved)
         resolved.round_number += 1
         return resolved
 
@@ -191,9 +196,29 @@ class RoundResolver:
                 )
         return resolved
 
+    def resolve_departures(self, state: GameState) -> GameState:
+        resolved = state.model_copy(deep=True)
+        for company in resolved.companies:
+            remaining_employees = []
+            for employee in company.employees:
+                if employee.loyalty < DEPARTURE_LOYALTY_THRESHOLD:
+                    resolved.last_round_events.setdefault(company.id, []).append(
+                        f"{employee.name} left the company (loyalty: {employee.loyalty})."
+                    )
+                    continue
+                remaining_employees.append(employee)
+            company.employees = remaining_employees
+        return resolved
+
 
 def _role_power(company: Company, role: EmployeeRole) -> int:
-    return sum(employee.skill for employee in company.employees if employee.role == role)
+    return sum(
+        employee.skill
+        if employee.morale >= LOW_MORALE_THRESHOLD
+        else employee.skill * LOW_MORALE_POWER_PERCENT // 100
+        for employee in company.employees
+        if employee.role == role
+    )
 
 
 def _product_role_bonus(company: Company, decision: CompanyDecision) -> int:

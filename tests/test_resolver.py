@@ -360,3 +360,65 @@ def test_operations_role_reduces_payroll_up_to_twenty_percent() -> None:
     resolved = RoundResolver().process_payroll(state)
 
     assert resolved.companies[0].cash == 92_000
+
+
+def test_low_morale_halves_employee_role_power() -> None:
+    state = build_state(cash=100_000)
+    employee = make_employee("marketing-1", EmployeeRole.MARKETING, skill=100)
+    employee.morale = 39
+    state.companies[0].employees = [employee]
+
+    resolved = RoundResolver().resolve_investments(
+        state,
+        {"nova": build_decision(marketing=20_000)},
+    )
+
+    assert resolved.companies[0].reputation == 52
+
+
+def test_employee_below_loyalty_threshold_leaves_and_creates_event() -> None:
+    state = build_payroll_state(cash=100_000, loyalty=39)
+
+    resolved = RoundResolver().resolve_departures(state)
+
+    assert resolved.companies[0].employees == []
+    assert resolved.last_round_events == {
+        "nova": [
+            "Employee One left the company (loyalty: 39).",
+            "Employee Two left the company (loyalty: 39).",
+        ]
+    }
+    assert len(state.companies[0].employees) == 2
+
+
+def test_retention_can_prevent_departure_in_same_round() -> None:
+    state = build_payroll_state(cash=100_000, loyalty=39)
+
+    resolved = RoundResolver().resolve_round(
+        state,
+        {"nova": build_decision(retention=20_000)},
+    )
+
+    assert len(resolved.companies[0].employees) == 2
+    assert [employee.loyalty for employee in resolved.companies[0].employees] == [41, 41]
+    assert resolved.last_round_events == {}
+
+
+def test_unpaid_payroll_can_trigger_departures_in_same_round() -> None:
+    state = build_payroll_state(cash=20_000, loyalty=50)
+
+    resolved = RoundResolver().resolve_round(state, {})
+
+    assert resolved.companies[0].employees == []
+    assert len(resolved.last_round_events["nova"]) == 2
+
+
+def test_employees_start_leaving_after_two_unpaid_rounds() -> None:
+    state = build_payroll_state(cash=20_000, loyalty=65)
+
+    first_round = RoundResolver().resolve_round(state, {})
+    second_round = RoundResolver().resolve_round(first_round, {})
+
+    assert len(first_round.companies[0].employees) == 2
+    assert [employee.loyalty for employee in first_round.companies[0].employees] == [50, 50]
+    assert second_round.companies[0].employees == []

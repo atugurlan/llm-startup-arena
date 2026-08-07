@@ -204,6 +204,7 @@ def render_round_controls(
 def render_decision(
     slot: DeltaGenerator,
     decision: CompanyDecision,
+    events: list[str] | None = None,
 ) -> None:
     allocations = {
         category: amount for category, amount in decision.budget.model_dump().items() if amount > 0
@@ -211,25 +212,43 @@ def render_decision(
     budget_text = " · ".join(
         f"{escape(category.title())}: ${amount:,.0f}" for category, amount in allocations.items()
     )
+    event_text = "<br>".join(escape(event) for event in events or [])
+    outcome = (
+        f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
+        if event_text
+        else ""
+    )
     slot.markdown(
         f"""
         <div class="decision-box">
             <div class="decision-label">LATEST DECISION</div>
             <div class="decision-strategy">{escape(decision.strategy)}</div>
             <div class="decision-budget">{budget_text or "No budget allocated"}</div>
+            {outcome}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_decision_error(slot: DeltaGenerator, message: str) -> None:
+def render_decision_error(
+    slot: DeltaGenerator,
+    message: str,
+    events: list[str] | None = None,
+) -> None:
+    event_text = "<br>".join(escape(event) for event in events or [])
+    outcome = (
+        f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
+        if event_text
+        else ""
+    )
     slot.markdown(
         f"""
         <div class="decision-box">
             <div class="decision-label">DECISION REJECTED</div>
             <div class="decision-strategy">{escape(message)}</div>
             <div class="decision-budget">Fallback: Hold · Budget: $0</div>
+            {outcome}
         </div>
         """,
         unsafe_allow_html=True,
@@ -256,9 +275,17 @@ def render_company_grid(
             slot = st.empty()
             decision_slots[company.id] = slot
             if company.id in latest_decisions:
-                render_decision(slot, latest_decisions[company.id])
+                render_decision(
+                    slot,
+                    latest_decisions[company.id],
+                    session.state.last_round_events.get(company.id),
+                )
             elif company.id in latest_errors:
-                render_decision_error(slot, latest_errors[company.id])
+                render_decision_error(
+                    slot,
+                    latest_errors[company.id],
+                    session.state.last_round_events.get(company.id),
+                )
     return decision_slots
 
 
