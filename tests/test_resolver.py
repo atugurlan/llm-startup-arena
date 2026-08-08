@@ -477,3 +477,45 @@ def test_external_offer_below_minimum_is_not_accepted() -> None:
     assert len(resolved.companies[0].employees) == 5
     assert len(resolved.available_candidates) == 5
     assert resolved.last_round_events["nova"] == ["Hiring: no external offer was accepted."]
+
+
+def test_company_can_recruit_competitor_employee() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[0].product_score = 80
+    state.companies[0].reputation = 100
+    employee_id = "orbit-employee-1"
+    decision = CompanyDecision(
+        strategy="recruit competitor engineer",
+        budget=BudgetAllocation(recruitment=100_000),
+        target_employee_ids=[employee_id],
+    )
+
+    resolved = RoundResolver().resolve_recruitment(state, {"nova": decision})
+
+    assert any(employee.id == employee_id for employee in resolved.companies[0].employees)
+    assert all(employee.id != employee_id for employee in resolved.companies[1].employees)
+    assert resolved.last_round_events["nova"] == ["Recruited Orbit Employee 1 from Orbit AI."]
+    assert resolved.last_round_events["orbit"] == ["Lost Orbit Employee 1 to Nova Labs."]
+    assert len(state.companies[0].employees) == 5
+    assert len(state.companies[1].employees) == 5
+
+
+def test_retention_can_defend_employee_from_poaching() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    decisions = {
+        "nova": CompanyDecision(
+            strategy="recruit competitor engineer",
+            budget=BudgetAllocation(recruitment=40_000),
+            target_employee_ids=["orbit-employee-1"],
+        ),
+        "orbit": CompanyDecision(
+            strategy="retain team",
+            budget=BudgetAllocation(retention=40_000),
+        ),
+    }
+
+    resolved = RoundResolver().resolve_recruitment(state, decisions)
+
+    assert len(resolved.companies[0].employees) == 5
+    assert len(resolved.companies[1].employees) == 5
+    assert resolved.last_round_events["nova"] == ["Poaching: no employee offer was accepted."]

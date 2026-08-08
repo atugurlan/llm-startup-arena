@@ -46,7 +46,7 @@ class DecisionNormalizer:
 
         if normalized.budget.recruitment == 0:
             normalized.target_candidate_ids = []
-        normalized.target_employee_ids = []
+            normalized.target_employee_ids = []
 
         normalized.budget.sabotage = 0
         normalized.sabotage_action = None

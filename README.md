@@ -75,6 +75,11 @@ companies target the same person, a deterministic score combines offer size, com
 reputation, and that candidate's personality preference. The winner adds the candidate to its
 team immediately, removes them from the available pool, and pays their salary that round.
 
+Companies can also target up to two employees from competitors. Recruitment spending is shared
+across all candidate and employee targets, with at least `$20,000` required per target. An offer
+competes against the employee's loyalty, the current company's reputation, and its retention
+spending. A successful offer transfers the employee immediately and updates both payrolls.
+
 ## Run locally
 
 ```powershell
@@ -196,6 +201,14 @@ payroll is processed.
 - if remaining cash cannot cover payroll, company cash becomes `0`, employee morale drops
   by `20`, loyalty drops by `15`, and reputation drops by `5`;
 - morale, loyalty, and reputation cannot drop below `0`.
+
+### Low-cash strategy
+
+When a company's cash falls below `$100,000`, its model receives an explicit critical-cash
+instruction. It is asked to stop discretionary spending, preserve enough cash for payroll, and
+target up to two available high-revenue clients because client targeting itself is free. Active
+contracts continue paying revenue normally. This is strategic prompt guidance rather than an
+engine override, so the company remains responsible for its final decision.
 
 ### Morale, loyalty, and departures
 

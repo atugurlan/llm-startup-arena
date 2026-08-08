@@ -3,13 +3,18 @@ from llm_startup_arena.engine import GameFactory
 from llm_startup_arena.llm.prompts import build_company_prompt, build_correction_prompt
 
 
-def test_company_prompt_disables_unimplemented_employee_poaching() -> None:
+def test_company_prompt_lists_recruitable_competitor_employees() -> None:
     state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
 
     prompt = build_company_prompt("nova", state)
 
-    assert "Poaching is unavailable: target_employee_ids must always be []" in prompt
-    assert "orbit-employee-1" not in prompt
+    assert "RECRUITABLE EMPLOYEE IDS" in prompt
+    assert "orbit-employee-1" in prompt
+    recruitable_section = prompt.split("RECRUITABLE EMPLOYEE IDS:", maxsplit=1)[1].split(
+        "CLIENT ACQUISITION", maxsplit=1
+    )[0]
+    assert "nova-employee-1" not in recruitable_section
+    assert "at least 20000 per target" in prompt
 
 
 def test_company_prompt_explains_budget_and_sabotage_rules() -> None:
@@ -96,10 +101,8 @@ def test_company_prompt_explains_external_hiring() -> None:
     assert "candidate-alex-chen" in prompt
     assert "At least 20000 recruitment spending per candidate" in prompt
     assert "included in payroll this round" in prompt
-    assert "With one candidate" in prompt
-    assert "at least 20000" in prompt
-    assert "With two candidates" in prompt
-    assert "at least 40000" in prompt
+    assert "Recruitment budget is shared across candidate and employee targets" in prompt
+    assert "at least 20000 per total target" in prompt
     assert "You control 'Nova Labs', whose company ID is 'nova'" in prompt
     assert "Never mention or act on behalf of another company" in prompt
 
@@ -126,5 +129,28 @@ def test_correction_prompt_repeats_current_allowed_values() -> None:
     assert "valid client IDs" in prompt
     assert "client-5" not in prompt
     assert "candidate-alex-chen" in prompt
-    assert "target_employee_ids=[]" in prompt
+    assert "valid competitor employee IDs" in prompt
     assert "total budget <= 475000" in prompt
+
+
+def test_company_prompt_enters_critical_cash_mode_below_threshold() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[0].cash = 99_999
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "CRITICAL CASH MODE" in prompt
+    assert "increase cash and avoid insolvency" in prompt
+    assert "product=0, marketing=0, training=0, recruitment=0, retention=0" in prompt
+    assert "Client targeting costs no money" in prompt
+    assert "['client-5', 'client-10']" in prompt
+
+
+def test_company_prompt_uses_normal_cash_strategy_at_threshold() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[0].cash = 100_000
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "CASH STATUS: Normal" in prompt
+    assert "CRITICAL CASH MODE" not in prompt

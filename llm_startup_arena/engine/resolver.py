@@ -133,8 +133,8 @@ class RoundResolver:
                 decision = decisions.get(company.id)
                 if decision is None or candidate.id not in decision.target_candidate_ids:
                     continue
-                budget_per_candidate = decision.budget.recruitment // len(
-                    decision.target_candidate_ids
+                budget_per_candidate = decision.budget.recruitment // _recruitment_target_count(
+                    decision
                 )
                 if budget_per_candidate < MIN_RECRUITMENT_BUDGET_PER_CANDIDATE:
                     continue
@@ -163,6 +163,65 @@ class RoundResolver:
             hired_ids = {employee.id for employee in companies[company_id].employees}
             if not any(candidate_id in hired_ids for candidate_id in decision.target_candidate_ids):
                 _record_event(resolved, company_id, "Hiring: no external offer was accepted.")
+
+        employee_owners = {
+            employee.id: company for company in resolved.companies for employee in company.employees
+        }
+        transferred_employee_ids: dict[str, set[str]] = {}
+        for employee_id, owner in list(employee_owners.items()):
+            employee = next(employee for employee in owner.employees if employee.id == employee_id)
+            offers = []
+            for company in resolved.companies:
+                decision = decisions.get(company.id)
+                if (
+                    decision is None
+                    or company.id == owner.id
+                    or employee_id not in decision.target_employee_ids
+                ):
+                    continue
+                budget_per_target = decision.budget.recruitment // _recruitment_target_count(
+                    decision
+                )
+                if budget_per_target < MIN_RECRUITMENT_BUDGET_PER_CANDIDATE:
+                    continue
+                offers.append(
+                    (
+                        _candidate_offer_score(
+                            company,
+                            employee,
+                            decision,
+                            budget_per_target,
+                        ),
+                        company,
+                    )
+                )
+
+            if not offers:
+                continue
+
+            best_score, winner = max(offers, key=lambda offer: offer[0])
+            owner_retention = decisions.get(owner.id, _HOLD_DECISION).budget.retention
+            resistance = employee.loyalty + owner.reputation + owner_retention // 1_000
+            if best_score <= resistance:
+                continue
+
+            owner.employees.remove(employee)
+            winner.employees.append(employee)
+            transferred_employee_ids.setdefault(winner.id, set()).add(employee.id)
+            _record_event(
+                resolved,
+                winner.id,
+                f"Recruited {employee.name} from {owner.name}.",
+            )
+            _record_event(
+                resolved,
+                owner.id,
+                f"Lost {employee.name} to {winner.name}.",
+            )
+
+        for company_id, decision in decisions.items():
+            if decision.target_employee_ids and not transferred_employee_ids.get(company_id):
+                _record_event(resolved, company_id, "Poaching: no employee offer was accepted.")
 
         return resolved
 
@@ -372,3 +431,7 @@ def _candidate_offer_score(
         case EmployeePersonality.RELIABLE:
             score += min(company.cash, 500_000) // 10_000
     return score
+
+
+def _recruitment_target_count(decision: CompanyDecision) -> int:
+    return max(1, len(decision.target_candidate_ids) + len(decision.target_employee_ids))

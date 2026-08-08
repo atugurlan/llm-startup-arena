@@ -214,6 +214,14 @@ def render_decision(
     budget_text = " · ".join(
         f"{escape(category.title())}: ${amount:,.0f}" for category, amount in allocations.items()
     )
+    targets = []
+    if decision.target_candidate_ids:
+        targets.append(f"Candidates: {', '.join(decision.target_candidate_ids)}")
+    if decision.target_employee_ids:
+        targets.append(f"Employees: {', '.join(decision.target_employee_ids)}")
+    if decision.target_client_ids:
+        targets.append(f"Clients: {', '.join(decision.target_client_ids)}")
+    target_text = " · ".join(escape(target) for target in targets)
     event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
     outcome = (
         f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
@@ -226,6 +234,7 @@ def render_decision(
             <div class="decision-label">LATEST DECISION</div>
             <div class="decision-strategy">{escape(decision.strategy)}</div>
             <div class="decision-budget">{budget_text or "No budget allocated"}</div>
+            <div class="decision-budget">{target_text}</div>
             {outcome}
         </div>
         """,

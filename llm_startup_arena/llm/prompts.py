@@ -1,6 +1,7 @@
 from llm_startup_arena.domain import EmployeeRole, GameState
 
 LOW_MORALE_THRESHOLD = 40
+LOW_CASH_THRESHOLD = 100_000
 
 SYSTEM_PROMPT = """
 You are the founder and CEO of one company in a competitive startup simulation.
@@ -17,6 +18,16 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
     client_ids = [client.id for client in available_clients]
     client_revenue = {client.id: client.revenue_per_round for client in available_clients}
     candidate_ids = [candidate.id for candidate in state.available_candidates]
+    recruitable_employees = [
+        {
+            **employee.model_dump(mode="json"),
+            "current_company": competitor.name,
+        }
+        for competitor in state.companies
+        if competitor.id != company_id
+        for employee in competitor.employees
+    ]
+    recruitable_employee_ids = [employee["id"] for employee in recruitable_employees]
     payroll = sum(employee.salary for employee in company.employees)
     safe_discretionary_budget = max(0, company.cash - payroll)
     standard_budgets = _allowed_budgets(safe_discretionary_budget, 20_000)
@@ -29,11 +40,14 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
         )
         for role in EmployeeRole
     }
+    cash_strategy = _build_cash_strategy(company.cash, client_revenue)
 
     return f"""
 You control {company.name!r}, whose company ID is {company_id!r}.
 Never mention or act on behalf of another company in your strategy.
 All companies decide from the same frozen round snapshot.
+
+{cash_strategy}
 
 STRICT OUTPUT RULES — check every rule before responding:
 1. product, marketing, and retention must each be chosen from {standard_budgets}.
@@ -41,10 +55,10 @@ STRICT OUTPUT RULES — check every rule before responding:
 3. Total budget must not exceed the safe discretionary budget {safe_discretionary_budget}.
 4. target_client_ids must contain 0–2 unique IDs copied only from VALID CLIENT IDS.
 5. target_candidate_ids must contain 0–2 unique IDs copied only from AVAILABLE CANDIDATE IDS.
-6. With zero candidates: target_candidate_ids=[] and recruitment=0.
-7. With one candidate: recruitment must be chosen from {standard_budgets} and be at least 20000.
-8. With two candidates: recruitment must be chosen from {standard_budgets} and be at least 40000.
-9. Poaching is unavailable: target_employee_ids must always be [].
+6. target_employee_ids must contain 0–2 unique IDs copied only from RECRUITABLE EMPLOYEE IDS.
+7. Recruitment budget is shared across candidate and employee targets.
+8. With no recruitment targets, recruitment=0. Otherwise use at least 20000 per total target.
+9. recruitment must be chosen from {standard_budgets}.
 10. Sabotage is unavailable: sabotage must always be 0 and sabotage_action must be null.
 11. Partnerships are unavailable: partnership_offer must always be null.
 12. Keep strategy short and refer only to {company.name!r}.
@@ -65,6 +79,12 @@ AVAILABLE CANDIDATE IDS:
 
 AVAILABLE CANDIDATE DETAILS:
 {[candidate.model_dump(mode="json") for candidate in state.available_candidates]}
+
+RECRUITABLE EMPLOYEE IDS:
+{recruitable_employee_ids}
+
+RECRUITABLE EMPLOYEE DETAILS:
+{recruitable_employees}
 
 CLIENT ACQUISITION AND REVENUE:
 - Only target IDs from VALID CLIENT IDS; clients already under contract are unavailable.
@@ -92,6 +112,14 @@ EXTERNAL HIRING:
 - If companies target the same candidate, personality preferences determine the best offer.
 - A hired candidate joins immediately and is included in payroll this round.
 
+COMPETITOR EMPLOYEE RECRUITMENT:
+- You may target up to two competitor employees with target_employee_ids.
+- Every target must come from RECRUITABLE EMPLOYEE IDS.
+- Recruitment budget is split across all external candidate and competitor employee targets.
+- Each target needs at least 20000 per target for an eligible offer.
+- The offer competes against employee loyalty, current company reputation, and retention.
+- A successful transfer moves the employee immediately and updates both companies' payroll.
+
 EMPLOYEE ROLE BONUSES:
 - Current effective role power: {role_power}
 - Employees with morale below 40 contribute only 50% of their skill to role power.
@@ -105,8 +133,8 @@ EMPLOYEE ROLE BONUSES:
 FINAL SELF-CHECK:
 - Every target ID appears in an allowed list above.
 - Every budget appears in its allowed budget list above.
-- recruitment matches the number of candidate targets.
-- target_employee_ids=[], sabotage=0, sabotage_action=null, partnership_offer=null.
+- recruitment provides at least 20000 for every candidate and employee target combined.
+- sabotage=0, sabotage_action=null, partnership_offer=null.
 - Total budget is at most {safe_discretionary_budget}.
 
 YOUR COMPANY STATE ONLY:
@@ -120,6 +148,12 @@ def build_correction_prompt(company_id: str, state: GameState, error: Exception)
     safe_budget = max(0, company.cash - payroll)
     available_clients = [client.id for client in state.clients if client.company_id is None]
     available_candidates = [candidate.id for candidate in state.available_candidates]
+    recruitable_employees = [
+        employee.id
+        for competitor in state.companies
+        if competitor.id != company_id
+        for employee in competitor.employees
+    ]
     return f"""
 The previous decision for {company.name!r} was invalid: {error}
 
@@ -128,8 +162,8 @@ Return a complete replacement JSON decision using only these constraints:
 - training: {_allowed_budgets(safe_budget, 25_000)}
 - valid client IDs: {available_clients}
 - valid candidate IDs: {available_candidates}
-- zero candidates means recruitment=0; one needs at least 20000; two need at least 40000
-- target_employee_ids=[]
+- valid competitor employee IDs: {recruitable_employees}
+- recruitment=0 with no targets; otherwise use at least 20000 per candidate and employee target
 - sabotage=0 and sabotage_action=null
 - partnership_offer=null
 - total budget <= {safe_budget}
@@ -139,3 +173,24 @@ Return JSON only.
 
 def _allowed_budgets(maximum: int, unit: int) -> list[int]:
     return list(range(0, maximum + 1, unit))
+
+
+def _build_cash_strategy(cash: int, client_revenue: dict[str, int]) -> str:
+    if cash >= LOW_CASH_THRESHOLD:
+        return "CASH STATUS: Normal. Balance growth spending with payroll and client revenue."
+
+    highest_value_clients = sorted(
+        client_revenue,
+        key=client_revenue.get,
+        reverse=True,
+    )[:2]
+    return f"""
+CRITICAL CASH MODE — available cash is below {LOW_CASH_THRESHOLD}:
+- Your primary objective is to increase cash and avoid insolvency.
+- Set product=0, marketing=0, training=0, recruitment=0, retention=0, and sabotage=0.
+- Set target_candidate_ids=[] and target_employee_ids=[].
+- Client targeting costs no money. Target up to two valid high-revenue clients.
+- Prefer these currently available high-revenue clients: {highest_value_clients}
+- Existing client contracts continue producing revenue automatically.
+- Do not spend merely because cash is available; preserve cash for payroll.
+""".strip()
