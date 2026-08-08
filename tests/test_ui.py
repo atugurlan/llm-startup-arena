@@ -3,8 +3,18 @@ import pytest
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
 from llm_startup_arena.domain import GameState
 from llm_startup_arena.engine import GameFactory, RoundResolver
-from llm_startup_arena.llm import BudgetAllocation, CompanyDecision, RoundDecisionRecord
-from llm_startup_arena.ui.app import employee_roster_rows, round_label, run_next_round
+from llm_startup_arena.llm import (
+    BudgetAllocation,
+    CompanyDecision,
+    RoundDecisionRecord,
+    SabotageAction,
+)
+from llm_startup_arena.ui.app import (
+    employee_roster_rows,
+    render_decision,
+    round_label,
+    run_next_round,
+)
 from llm_startup_arena.ui.session import GameSession
 
 
@@ -96,3 +106,28 @@ def test_employee_roster_rows_reflect_current_company_ownership() -> None:
         "Loyalty": 65,
         "Salary / round": "$4,000",
     }
+
+
+def test_decision_card_shows_sabotage_action_and_company_name() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    rendered: list[str] = []
+
+    class FakeSlot:
+        def markdown(self, content: str, **kwargs) -> None:
+            rendered.append(content)
+
+    decision = CompanyDecision(
+        strategy="weaken the market leader",
+        budget=BudgetAllocation(sabotage=20_000),
+        sabotage_action=SabotageAction.REPUTATION_ATTACK,
+        target_company_id="orbit",
+    )
+
+    render_decision(
+        FakeSlot(),  # type: ignore[arg-type]
+        decision,
+        companies={company.id: company for company in state.companies},
+    )
+
+    assert "Sabotage: reputation_attack" in rendered[0]
+    assert "Target: Orbit AI" in rendered[0]

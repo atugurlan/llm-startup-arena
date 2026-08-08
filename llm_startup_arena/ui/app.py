@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from html import escape
 
 import streamlit as st
@@ -157,7 +157,7 @@ def render_round_controls(
                 slot.empty()
 
             def show_decision(company_id: str, decision: CompanyDecision) -> None:
-                render_decision(decision_slots[company_id], decision)
+                render_decision(decision_slots[company_id], decision, companies=companies)
                 progress_message.markdown(
                     f'<div class="model-progress">{escape(companies[company_id].name)} decided.</div>',
                     unsafe_allow_html=True,
@@ -207,6 +207,7 @@ def render_decision(
     slot: DeltaGenerator,
     decision: CompanyDecision,
     events: list[str] | None = None,
+    companies: Mapping[str, Company] | None = None,
 ) -> None:
     allocations = {
         category: amount for category, amount in decision.budget.model_dump().items() if amount > 0
@@ -221,6 +222,12 @@ def render_decision(
         targets.append(f"Employees: {', '.join(decision.target_employee_ids)}")
     if decision.target_client_ids:
         targets.append(f"Clients: {', '.join(decision.target_client_ids)}")
+    if decision.sabotage_action is not None:
+        targets.append(f"Sabotage: {decision.sabotage_action.value}")
+    if decision.target_company_id is not None:
+        target_company = (companies or {}).get(decision.target_company_id)
+        target_name = target_company.name if target_company else decision.target_company_id
+        targets.append(f"Target: {target_name}")
     target_text = " · ".join(escape(target) for target in targets)
     event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
     outcome = (
@@ -290,6 +297,7 @@ def render_company_grid(
                     slot,
                     latest_decisions[company.id],
                     session.state.last_round_events.get(company.id),
+                    {company.id: company for company in session.state.companies},
                 )
             elif company.id in latest_errors:
                 render_decision_error(

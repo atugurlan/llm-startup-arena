@@ -1,7 +1,7 @@
 """Provider-independent LLM contracts."""
 
 from .coordinator import DecisionCoordinator
-from .provider import BudgetAllocation, CompanyDecision, LLMProvider
+from .provider import BudgetAllocation, CompanyDecision, LLMProvider, SabotageAction
 from .round_record import RoundDecisionRecord
 from .validation import DecisionNormalizer, DecisionValidationError, DecisionValidator
 
@@ -14,4 +14,5 @@ __all__ = [
     "DecisionValidator",
     "LLMProvider",
     "RoundDecisionRecord",
+    "SabotageAction",
 ]

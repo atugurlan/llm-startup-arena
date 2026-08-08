@@ -130,7 +130,7 @@ Decision validation currently enforces:
 - the total budget cannot exceed company cash;
 - client and employee targets must exist and be unique;
 - companies cannot recruit their own employees;
-- sabotage actions and sabotage budgets must be consistent;
+- sabotage requires a supported action, a competing company target, and at least `$20,000`;
 - one invalid model response does not stop the other companies.
 
 ## Economic rules
@@ -152,7 +152,26 @@ flowchart LR
 - every `$20,000` invested in `product` adds one `product_score` point;
 - every `$20,000` invested in `marketing` adds one reputation point;
 - product score and reputation are capped at `100`;
-- the effects of recruitment and sabotage are added in later stages.
+- sabotage spending is resolved after client acquisition and before payroll.
+
+### Sabotage contract
+
+The decision schema is ready for four sabotage actions: `product_disruption`,
+`reputation_attack`, `client_interference`, and `talent_disruption`. A sabotage decision must
+spend at least `$20,000`, select one of these actions, and identify an existing competing
+company through `target_company_id`. A company cannot target itself.
+
+The resolver applies one sabotage level for every `$20,000` spent:
+
+- `product_disruption` removes `2` product points per level;
+- `reputation_attack` removes `2` reputation points per level;
+- `client_interference` shortens one active client contract by one round per level, prioritizing
+  contracts closest to expiration;
+- `talent_disruption` removes `4` morale and `2` loyalty from every target employee per level.
+
+Effects never reduce scores below zero. Both the attacker and target receive a round event that
+describes the result. Models receive the available actions, their deterministic effects, and valid
+competitor company IDs in every decision prompt.
 
 ### Training
 
@@ -232,8 +251,9 @@ the principal economic effects can be verified without inspecting the internal g
 Repeated client events are aggregated to keep all four outcome cells compact and aligned.
 
 Before validation, recoverable model mistakes are normalized: duplicate or unavailable client
-targets and invalid employee targets are removed, while an incomplete sabotage allocation is
-reset to zero. Overspending and malformed responses remain hard errors and reject the decision.
+targets and invalid employee targets are removed. Empty sabotage allocations have their dangling
+action or target cleared, while funded sabotage decisions remain subject to full validation.
+Overspending and malformed responses remain hard errors and reject the decision.
 
 ## Architecture
 

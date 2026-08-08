@@ -3,7 +3,7 @@ import pytest
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
 from llm_startup_arena.domain import Client, Company, Employee, EmployeeRole, GameState
 from llm_startup_arena.engine import GameFactory, RoundResolver
-from llm_startup_arena.llm import BudgetAllocation, CompanyDecision
+from llm_startup_arena.llm import BudgetAllocation, CompanyDecision, SabotageAction
 
 
 def build_state(*, cash: int = 500_000, product_score: int = 20, reputation: int = 50):
@@ -519,3 +519,99 @@ def test_retention_can_defend_employee_from_poaching() -> None:
     assert len(resolved.companies[0].employees) == 5
     assert len(resolved.companies[1].employees) == 5
     assert resolved.last_round_events["nova"] == ["Poaching: no employee offer was accepted."]
+
+
+@pytest.mark.parametrize(
+    ("action", "attribute", "starting_value", "expected_value", "effect"),
+    [
+        (
+            SabotageAction.PRODUCT_DISRUPTION,
+            "product_score",
+            20,
+            16,
+            "product score -4.",
+        ),
+        (
+            SabotageAction.REPUTATION_ATTACK,
+            "reputation",
+            50,
+            46,
+            "reputation -4.",
+        ),
+    ],
+)
+def test_sabotage_reduces_target_company_score(
+    action: SabotageAction,
+    attribute: str,
+    starting_value: int,
+    expected_value: int,
+    effect: str,
+) -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    target = state.companies[1]
+    setattr(target, attribute, starting_value)
+    decision = CompanyDecision(
+        strategy="attack competitor",
+        budget=BudgetAllocation(sabotage=40_000),
+        sabotage_action=action,
+        target_company_id=target.id,
+    )
+
+    resolved = RoundResolver().resolve_sabotage(state, {"nova": decision})
+
+    assert getattr(resolved.companies[1], attribute) == expected_value
+    assert getattr(state.companies[1], attribute) == starting_value
+    assert resolved.last_round_events["nova"] == [f"Sabotage against Orbit AI: {effect}"]
+    assert resolved.last_round_events["orbit"] == [f"Sabotaged by Nova Labs: {effect}"]
+
+
+def test_client_interference_shortens_contracts_and_releases_expiring_client() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    target = state.companies[1]
+    for client, remaining in zip(state.clients[:2], (1, 3), strict=True):
+        client.company_id = target.id
+        client.contract_rounds_remaining = remaining
+        target.client_ids.append(client.id)
+    decision = CompanyDecision(
+        strategy="disrupt contracts",
+        budget=BudgetAllocation(sabotage=40_000),
+        sabotage_action=SabotageAction.CLIENT_INTERFERENCE,
+        target_company_id=target.id,
+    )
+
+    resolved = RoundResolver().resolve_sabotage(state, {"nova": decision})
+
+    assert resolved.clients[0].company_id is None
+    assert resolved.clients[0].contract_rounds_remaining == 0
+    assert resolved.clients[1].company_id == "orbit"
+    assert resolved.clients[1].contract_rounds_remaining == 2
+    assert resolved.companies[1].client_ids == [resolved.clients[1].id]
+    assert resolved.last_round_events["nova"] == [
+        "Sabotage against Orbit AI: 2 client contract(s) shortened; 1 client(s) released."
+    ]
+
+
+def test_talent_disruption_reduces_target_employee_morale_and_loyalty() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    target = state.companies[1]
+    initial_morale = [employee.morale for employee in target.employees]
+    initial_loyalty = [employee.loyalty for employee in target.employees]
+    decision = CompanyDecision(
+        strategy="disrupt team",
+        budget=BudgetAllocation(sabotage=40_000),
+        sabotage_action=SabotageAction.TALENT_DISRUPTION,
+        target_company_id=target.id,
+    )
+
+    resolved = RoundResolver().resolve_sabotage(state, {"nova": decision})
+    employees = resolved.companies[1].employees
+
+    assert [employee.morale for employee in employees] == [
+        max(0, morale - 8) for morale in initial_morale
+    ]
+    assert [employee.loyalty for employee in employees] == [
+        max(0, loyalty - 4) for loyalty in initial_loyalty
+    ]
+    assert resolved.last_round_events["orbit"] == [
+        "Sabotaged by Nova Labs: 5 employees lost up to 8 morale and 4 loyalty."
+    ]
