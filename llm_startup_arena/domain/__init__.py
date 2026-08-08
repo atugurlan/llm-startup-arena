@@ -1,5 +1,6 @@
 """Deterministic game entities."""
 
+from .history import CompanySnapshot, RoundSnapshot
 from .models import (
     Client,
     Company,
@@ -13,9 +14,11 @@ from .models import (
 __all__ = [
     "Client",
     "Company",
+    "CompanySnapshot",
     "Employee",
     "EmployeePersonality",
     "EmployeeRole",
     "GameState",
     "MarketEvent",
+    "RoundSnapshot",
 ]

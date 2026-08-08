@@ -1,12 +1,13 @@
 from collections.abc import MutableMapping
 from typing import Any
 
-from llm_startup_arena.domain import GameState
+from llm_startup_arena.domain import GameState, RoundSnapshot
 from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import RoundDecisionRecord
 
 GAME_STATE_KEY = "game_state"
 ROUND_HISTORY_KEY = "round_history"
+SNAPSHOT_HISTORY_KEY = "snapshot_history"
 
 
 class GameSession:
@@ -28,6 +29,7 @@ class GameSession:
         if not isinstance(stored_state, GameState):
             stored_state = self._factory.create()
             self._storage[GAME_STATE_KEY] = stored_state
+            self._storage[SNAPSHOT_HISTORY_KEY] = [RoundSnapshot.from_state(stored_state)]
         return stored_state
 
     @property
@@ -48,10 +50,21 @@ class GameSession:
     def latest_round(self) -> RoundDecisionRecord | None:
         return self.round_history[-1] if self.round_history else None
 
+    @property
+    def snapshot_history(self) -> list[RoundSnapshot]:
+        stored_history = self._storage.get(SNAPSHOT_HISTORY_KEY)
+        if not isinstance(stored_history, list) or not all(
+            isinstance(snapshot, RoundSnapshot) for snapshot in stored_history
+        ):
+            stored_history = [RoundSnapshot.from_state(self.state)]
+            self._storage[SNAPSHOT_HISTORY_KEY] = stored_history
+        return stored_history
+
     def new_game(self) -> GameState:
         state = self._factory.create()
         self._storage[GAME_STATE_KEY] = state
         self._storage[ROUND_HISTORY_KEY] = []
+        self._storage[SNAPSHOT_HISTORY_KEY] = [RoundSnapshot.from_state(state)]
         return state
 
     def record_round(self, record: RoundDecisionRecord) -> None:
@@ -71,16 +84,20 @@ class GameSession:
                 f"Expected round {self.state.round_number + 1}, received {record.round_number}"
             )
 
+        history = self.snapshot_history
         resolved_state = resolver.resolve_round(self.state, record.decisions)
         self.record_round(record)
         self._storage[GAME_STATE_KEY] = resolved_state
+        history.append(RoundSnapshot.from_state(resolved_state))
         return resolved_state
 
     def advance_round(self) -> GameState:
         if self.is_finished:
             raise RuntimeError("The game has already finished")
 
+        history = self.snapshot_history
         state = self.state.model_copy(deep=True)
         state.round_number += 1
         self._storage[GAME_STATE_KEY] = state
+        history.append(RoundSnapshot.from_state(state))
         return state

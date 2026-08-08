@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from streamlit.delta_generator import DeltaGenerator
 
 from llm_startup_arena.config import AppConfig
-from llm_startup_arena.domain import Company, GameState
+from llm_startup_arena.domain import Company, GameState, RoundSnapshot
 from llm_startup_arena.engine import CompanyRanker, GameFactory, GameResult, RoundResolver
 from llm_startup_arena.llm import CompanyDecision, DecisionCoordinator, RoundDecisionRecord
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
@@ -369,6 +369,52 @@ def render_employee_rosters(state: GameState) -> None:
         )
 
 
+def history_chart_rows(
+    snapshots: list[RoundSnapshot],
+    metric: str,
+) -> list[dict[str, int]]:
+    """Convert stored snapshots into Streamlit chart rows."""
+    return [
+        {
+            "Round": snapshot.round_number,
+            **{
+                company.company_name: int(getattr(company, metric))
+                for company in snapshot.companies
+            },
+        }
+        for snapshot in snapshots
+    ]
+
+
+def render_game_history(snapshots: list[RoundSnapshot]) -> None:
+    completed_rounds = snapshots[-1].round_number if snapshots else 0
+    with st.expander(f"Game history · {completed_rounds} rounds completed"):
+        chart_specs = (
+            ("Cash", "cash"),
+            ("Product", "product_score"),
+            ("Reputation", "reputation"),
+            ("Clients", "client_count"),
+            ("Employees", "employee_count"),
+        )
+        tabs = st.tabs([label for label, _ in chart_specs])
+        for tab, (label, metric) in zip(tabs, chart_specs, strict=True):
+            with tab:
+                rows = history_chart_rows(snapshots, metric)
+                company_names = (
+                    [company.company_name for company in snapshots[0].companies]
+                    if snapshots
+                    else []
+                )
+                st.line_chart(
+                    rows,
+                    x="Round",
+                    y=company_names,
+                    x_label="Round",
+                    y_label=label,
+                    height=320,
+                )
+
+
 def render_final_ranking(result: GameResult) -> None:
     winner = result.winner
     st.markdown(
@@ -427,6 +473,7 @@ def render_arena(
 
     render_talent_pool(state)
     render_employee_rosters(state)
+    render_game_history(session.snapshot_history)
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
