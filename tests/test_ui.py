@@ -11,8 +11,10 @@ from llm_startup_arena.llm import (
 )
 from llm_startup_arena.ui.app import (
     employee_roster_rows,
+    history_chart_rows,
     render_decision,
     render_final_ranking,
+    render_game_history,
     round_label,
     run_next_round,
 )
@@ -166,3 +168,66 @@ def test_final_ranking_renders_winner_and_score_breakdown(monkeypatch) -> None:
     assert "Reputation:" in rendered[1]
     assert "Clients:" in rendered[1]
     assert "Team:" in rendered[1]
+
+
+def test_history_chart_rows_contains_one_series_per_company() -> None:
+    session = build_session()
+    session.advance_round()
+
+    rows = history_chart_rows(session.snapshot_history, "cash")
+
+    assert rows == [
+        {
+            "Round": 0,
+            "Nova Labs": 500_000,
+            "Orbit AI": 500_000,
+            "Pixel Forge": 500_000,
+            "Apex Systems": 500_000,
+        },
+        {
+            "Round": 1,
+            "Nova Labs": 500_000,
+            "Orbit AI": 500_000,
+            "Pixel Forge": 500_000,
+            "Apex Systems": 500_000,
+        },
+    ]
+
+
+def test_game_history_renders_all_five_metric_charts(monkeypatch) -> None:
+    session = build_session()
+    labels: list[str] = []
+    charts: list[dict] = []
+
+    class FakeContainer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "llm_startup_arena.ui.app.st.expander",
+        lambda label: labels.append(label) or FakeContainer(),
+    )
+    monkeypatch.setattr(
+        "llm_startup_arena.ui.app.st.tabs",
+        lambda tab_labels: [FakeContainer() for _ in tab_labels],
+    )
+    monkeypatch.setattr(
+        "llm_startup_arena.ui.app.st.line_chart",
+        lambda data, **kwargs: charts.append({"data": data, **kwargs}),
+    )
+
+    render_game_history(session.snapshot_history)
+
+    assert labels == ["Game history · 0 rounds completed"]
+    assert [chart["y_label"] for chart in charts] == [
+        "Cash",
+        "Product",
+        "Reputation",
+        "Clients",
+        "Employees",
+    ]
+    assert all(chart["x"] == "Round" for chart in charts)
+    assert all(len(chart["y"]) == 4 for chart in charts)
