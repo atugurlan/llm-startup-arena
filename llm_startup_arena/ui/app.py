@@ -9,7 +9,7 @@ from streamlit.delta_generator import DeltaGenerator
 
 from llm_startup_arena.config import AppConfig
 from llm_startup_arena.domain import Company, GameState
-from llm_startup_arena.engine import GameFactory, RoundResolver
+from llm_startup_arena.engine import CompanyRanker, GameFactory, GameResult, RoundResolver
 from llm_startup_arena.llm import CompanyDecision, DecisionCoordinator, RoundDecisionRecord
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
 
@@ -65,6 +65,22 @@ def inject_styles() -> None:
         .decision-label { color: #7f8aa6; font-size: .68rem; letter-spacing: .08em; }
         .decision-strategy { color: #e8ecf7; font-size: .88rem; margin: .3rem 0 .65rem; }
         .decision-budget { color: #9ca8c7; font-size: .75rem; line-height: 1.45; }
+        .ranking-header {
+            margin: 0 0 1rem; padding: 1.25rem 1.5rem; text-align: center;
+            border: 1px solid #3b4770; border-radius: 18px;
+            background: linear-gradient(135deg, #1b2542 0%, #131a2d 100%);
+        }
+        .ranking-title { color: #f8fafc; font-size: 1.5rem; font-weight: 750; }
+        .ranking-winner { color: #fbbf24; font-size: 1rem; margin-top: .3rem; }
+        .ranking-card {
+            min-height: 230px; padding: 1rem; border: 1px solid #29334d;
+            border-radius: 16px; background: #101627;
+        }
+        .ranking-position { color: #fbbf24; font-size: 1.4rem; font-weight: 750; }
+        .ranking-company { color: #f8fafc; font-size: 1.05rem; font-weight: 700; }
+        .ranking-model { color: #7f8aa6; font-size: .72rem; margin-bottom: .8rem; }
+        .ranking-total { color: #e8ecf7; font-size: 1.25rem; font-weight: 700; }
+        .ranking-breakdown { color: #9ca8c7; font-size: .72rem; line-height: 1.6; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -353,6 +369,41 @@ def render_employee_rosters(state: GameState) -> None:
         )
 
 
+def render_final_ranking(result: GameResult) -> None:
+    winner = result.winner
+    st.markdown(
+        f"""
+        <div class="ranking-header">
+            <div class="ranking-title">Final company ranking</div>
+            <div class="ranking-winner">Winner: {escape(winner.company_name)} · ${winner.total_value:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    columns = st.columns(len(result.rankings), gap="medium")
+    for column, score in zip(columns, result.rankings, strict=True):
+        with column:
+            st.markdown(
+                f"""
+                <div class="ranking-card">
+                    <div class="ranking-position">#{score.position}</div>
+                    <div class="ranking-company">{escape(score.company_name)}</div>
+                    <div class="ranking-model">{escape(score.model)}</div>
+                    <div class="ranking-total">${score.total_value:,.0f}</div>
+                    <div class="ranking-breakdown">
+                        Cash: ${score.cash_value:,.0f}<br>
+                        Product: ${score.product_value:,.0f}<br>
+                        Reputation: ${score.reputation_value:,.0f}<br>
+                        Clients: ${score.client_value:,.0f}<br>
+                        Team: ${score.employee_value:,.0f}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
 def render_arena(
     session: GameSession,
     coordinator: DecisionCoordinator,
@@ -370,6 +421,9 @@ def render_arena(
         """,
         unsafe_allow_html=True,
     )
+
+    if session.is_finished:
+        render_final_ranking(CompanyRanker().rank(state))
 
     render_talent_pool(state)
     render_employee_rosters(state)
