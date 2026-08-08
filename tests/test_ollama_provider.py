@@ -45,6 +45,7 @@ def test_provider_returns_validated_decision() -> None:
     assert decision.budget.total == 40_000
     assert client.request is not None
     assert client.request["think"] is False
+    assert "partnership_offer" not in client.request["format"]["properties"]
 
 
 class RetryingOllamaClient(FakeOllamaClient):

@@ -25,6 +25,7 @@ def test_company_prompt_explains_budget_and_sabotage_rules() -> None:
     assert "safe discretionary budget 475000" in prompt
     assert "Sabotage is unavailable" in prompt
     assert "sabotage must always be 0" in prompt
+    assert "partnership" not in prompt.casefold()
 
 
 def test_company_prompt_explains_payroll_reserve_and_penalties() -> None:

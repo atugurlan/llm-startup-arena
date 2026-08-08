@@ -49,7 +49,6 @@ class CompanyDecision(BaseModel):
         max_length=2,
         description="Unique available external candidate IDs targeted this round, or an empty list",
     )
-    partnership_offer: str | None = None
     sabotage_action: str | None = Field(
         default=None,
         description="Required when sabotage budget is positive; otherwise null",
