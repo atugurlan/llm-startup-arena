@@ -132,6 +132,38 @@ def test_validator_rejects_client_already_under_contract(game_state) -> None:
         )
 
 
+def test_validator_accepts_available_candidate_with_recruitment_budget(game_state) -> None:
+    decision = CompanyDecision(
+        strategy="hire external talent",
+        budget=BudgetAllocation(recruitment=20_000),
+        target_candidate_ids=["candidate-alex-chen"],
+    )
+
+    assert (
+        DecisionValidator().validate(
+            company_id="nova",
+            decision=decision,
+            state=game_state,
+        )
+        is decision
+    )
+
+
+def test_validator_requires_budget_for_candidate_target(game_state) -> None:
+    decision = CompanyDecision(
+        strategy="free hire",
+        budget=BudgetAllocation(),
+        target_candidate_ids=["candidate-alex-chen"],
+    )
+
+    with pytest.raises(DecisionValidationError, match="require a recruitment budget"):
+        DecisionValidator().validate(
+            company_id="nova",
+            decision=decision,
+            state=game_state,
+        )
+
+
 @pytest.mark.parametrize(
     ("budget", "action", "message"),
     [

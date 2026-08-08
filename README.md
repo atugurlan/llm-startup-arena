@@ -67,8 +67,13 @@ each employee values when evaluating an offer.
 
 Every new game starts with five available candidates: one engineer, product specialist,
 marketer, salesperson, and operations specialist. The interface shows their role,
-personality, skill, and salary. Hiring resolution is implemented separately so this initial
-commit only introduces the deterministic candidate pool.
+personality, skill, and salary.
+
+Companies may target up to two candidates per round. Recruitment spending is divided equally
+between those targets, and each offer needs at least `$20,000` per candidate. When several
+companies target the same person, a deterministic score combines offer size, company
+reputation, and that candidate's personality preference. The winner adds the candidate to its
+team immediately, removes them from the available pool, and pays their salary that round.
 
 ## Run locally
 

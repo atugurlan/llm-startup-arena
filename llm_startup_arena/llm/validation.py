@@ -39,6 +39,10 @@ class DecisionNormalizer:
             normalized.target_employee_ids,
             recruitable_employees,
         )
+        normalized.target_candidate_ids = _unique_valid_ids(
+            normalized.target_candidate_ids,
+            {candidate.id for candidate in state.available_candidates},
+        )
 
         has_sabotage_budget = normalized.budget.sabotage > 0
         has_sabotage_action = bool(
@@ -66,6 +70,7 @@ class DecisionValidator:
             *self._validate_budget(company, decision),
             *self._validate_client_targets(decision, state),
             *self._validate_employee_targets(company, decision, state),
+            *self._validate_candidate_targets(decision, state),
             *self._validate_sabotage(decision),
         ]
         if errors:
@@ -135,6 +140,22 @@ class DecisionValidator:
         if has_budget:
             return ["Sabotage budget requires a sabotage action"]
         return ["Sabotage action requires a sabotage budget"]
+
+    @staticmethod
+    def _validate_candidate_targets(
+        decision: CompanyDecision,
+        state: GameState,
+    ) -> list[str]:
+        errors = _duplicate_errors(decision.target_candidate_ids, "candidate")
+        available_candidates = {candidate.id for candidate in state.available_candidates}
+        invalid_candidates = set(decision.target_candidate_ids) - available_candidates
+        if invalid_candidates:
+            errors.append(
+                f"Unknown or unavailable candidates: {', '.join(sorted(invalid_candidates))}"
+            )
+        if decision.target_candidate_ids and decision.budget.recruitment == 0:
+            errors.append("Candidate targets require a recruitment budget")
+        return errors
 
 
 def _duplicate_errors(target_ids: list[str], target_type: str) -> list[str]:

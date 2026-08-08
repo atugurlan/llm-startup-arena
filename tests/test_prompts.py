@@ -93,3 +93,19 @@ def test_company_prompt_explains_morale_and_departure_rules() -> None:
     assert "morale below 40 contribute only 50%" in prompt
     assert "loyalty below 40 after payroll leaves" in prompt
     assert "Retention is applied before payroll" in prompt
+
+
+def test_company_prompt_explains_external_hiring() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+
+    prompt = build_company_prompt("nova", state)
+
+    assert "target_candidate_ids" in prompt
+    assert "candidate-alex-chen" in prompt
+    assert "At least 20000 recruitment spending per candidate" in prompt
+    assert "included in payroll this round" in prompt
+    assert "One candidate requires at least 20000 recruitment total" in prompt
+    assert "Two candidates require at least 40000 recruitment total" in prompt
+    assert "Do not use small placeholder amounts such as 500 or 1000" in prompt
+    assert "You control 'Nova Labs', whose company ID is 'nova'" in prompt
+    assert "Never mention or act on behalf of another company" in prompt

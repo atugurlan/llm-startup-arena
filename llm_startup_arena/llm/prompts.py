@@ -23,6 +23,7 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
     available_clients = [client for client in state.clients if client.company_id is None]
     client_ids = [client.id for client in available_clients]
     client_revenue = {client.id: client.revenue_per_round for client in available_clients}
+    candidate_ids = [candidate.id for candidate in state.available_candidates]
     payroll = sum(employee.salary for employee in company.employees)
     safe_discretionary_budget = max(0, company.cash - payroll)
     role_power = {
@@ -35,7 +36,8 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
     }
 
     return f"""
-You control company {company_id!r}.
+You control {company.name!r}, whose company ID is {company_id!r}.
+Never mention or act on behalf of another company in your strategy.
 All companies decide from the same frozen round snapshot.
 
 DECISION RULES — violating any rule rejects the entire decision:
@@ -50,6 +52,19 @@ DECISION RULES — violating any rule rejects the entire decision:
 7. If sabotage budget is greater than 0, sabotage_action must be a non-empty description.
 8. Use [] for unused target lists and null for unused optional actions or offers.
 9. Keep strategy short and descriptive.
+10. target_candidate_ids must contain 0–2 unique IDs selected only from AVAILABLE CANDIDATES.
+11. A non-empty target_candidate_ids list requires a positive recruitment budget.
+12. Never spend an amount that is too small to produce an effect. Use zero instead.
+
+MINIMUM USEFUL BUDGETS:
+- product: 0 or a multiple of 20000.
+- marketing: 0 or a multiple of 20000.
+- training: 0 or a multiple of 25000.
+- retention: 0 or a multiple of 20000.
+- recruitment for external candidates: at least 20000 for each targeted candidate.
+- One candidate requires at least 20000 recruitment total.
+- Two candidates require at least 40000 recruitment total.
+- Do not use small placeholder amounts such as 500 or 1000; they waste cash.
 
 PAYROLL OBLIGATION:
 - Employee salaries are paid after your decision budget at the end of every round.
@@ -67,6 +82,9 @@ RECRUITABLE EMPLOYEE IDS (the only valid recruitment targets):
 
 VALID CLIENT IDS:
 {client_ids}
+
+AVAILABLE CANDIDATES:
+{[candidate.model_dump() for candidate in state.available_candidates]}
 
 CLIENT ACQUISITION AND REVENUE:
 - Only target IDs from VALID CLIENT IDS; clients already under contract are unavailable.
@@ -87,6 +105,18 @@ EMPLOYEE RETENTION:
 - An employee with loyalty below 40 after payroll leaves the company at the end of the round.
 - Retention is applied before payroll and can prevent an employee from leaving.
 
+EXTERNAL HIRING:
+- Candidate IDs currently available: {candidate_ids}
+- You may target up to two candidates with target_candidate_ids.
+- Recruitment spending is divided equally between your targeted candidates.
+- At least 20000 recruitment spending per candidate is required for an eligible offer.
+- If you cannot spend that minimum safely, use target_candidate_ids=[] and recruitment=0.
+- If companies target the same candidate, personality preferences determine the best offer.
+- A hired candidate joins immediately and is included in payroll this round.
+
+Valid one-candidate hiring pattern:
+Choose exactly one current ID from AVAILABLE CANDIDATES and use recruitment=20000 or more.
+
 EMPLOYEE ROLE BONUSES:
 - Current effective role power: {role_power}
 - Employees with morale below 40 contribute only 50% of their skill to role power.
@@ -98,7 +128,8 @@ EMPLOYEE ROLE BONUSES:
 - Training is applied after investments, so new skill affects role bonuses next round.
 
 Example of consistent unused fields:
-target_employee_ids=[], target_client_ids=[], sabotage_action=null, partnership_offer=null
+target_employee_ids=[], target_candidate_ids=[], target_client_ids=[], sabotage_action=null,
+partnership_offer=null
 
 CURRENT GAME STATE:
 {state.model_dump_json()}
