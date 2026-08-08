@@ -10,6 +10,7 @@ from llm_startup_arena.llm import (
     SabotageAction,
 )
 from llm_startup_arena.ui.app import (
+    company_overview_rows,
     employee_roster_rows,
     history_chart_rows,
     render_decision,
@@ -196,7 +197,6 @@ def test_history_chart_rows_contains_one_series_per_company() -> None:
 
 def test_game_history_renders_all_five_metric_charts(monkeypatch) -> None:
     session = build_session()
-    labels: list[str] = []
     charts: list[dict] = []
 
     class FakeContainer:
@@ -206,10 +206,6 @@ def test_game_history_renders_all_five_metric_charts(monkeypatch) -> None:
         def __exit__(self, *args) -> None:
             return None
 
-    monkeypatch.setattr(
-        "llm_startup_arena.ui.app.st.expander",
-        lambda label: labels.append(label) or FakeContainer(),
-    )
     monkeypatch.setattr(
         "llm_startup_arena.ui.app.st.tabs",
         lambda tab_labels: [FakeContainer() for _ in tab_labels],
@@ -221,7 +217,6 @@ def test_game_history_renders_all_five_metric_charts(monkeypatch) -> None:
 
     render_game_history(session.snapshot_history)
 
-    assert labels == ["Game history · 0 rounds completed"]
     assert [chart["y_label"] for chart in charts] == [
         "Cash",
         "Product",
@@ -231,3 +226,14 @@ def test_game_history_renders_all_five_metric_charts(monkeypatch) -> None:
     ]
     assert all(chart["x"] == "Round" for chart in charts)
     assert all(len(chart["y"]) == 4 for chart in charts)
+
+
+def test_company_overview_rows_are_sorted_by_live_valuation() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[2].cash += 100_000
+
+    rows = company_overview_rows(state)
+
+    assert [row["Rank"] for row in rows] == [1, 2, 3, 4]
+    assert rows[0]["Company"] == "Pixel Forge"
+    assert rows[0]["Valuation"].startswith("$")
