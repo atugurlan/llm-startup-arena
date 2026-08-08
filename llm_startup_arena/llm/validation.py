@@ -39,14 +39,17 @@ class DecisionNormalizer:
             normalized.target_employee_ids,
             recruitable_employees,
         )
-
-        has_sabotage_budget = normalized.budget.sabotage > 0
-        has_sabotage_action = bool(
-            normalized.sabotage_action and normalized.sabotage_action.strip()
+        normalized.target_candidate_ids = _unique_valid_ids(
+            normalized.target_candidate_ids,
+            {candidate.id for candidate in state.available_candidates},
         )
-        if has_sabotage_budget != has_sabotage_action:
-            normalized.budget.sabotage = 0
-            normalized.sabotage_action = None
+
+        if normalized.budget.recruitment == 0:
+            normalized.target_candidate_ids = []
+            normalized.target_employee_ids = []
+
+        normalized.budget.sabotage = 0
+        normalized.sabotage_action = None
 
         return normalized
 
@@ -66,6 +69,7 @@ class DecisionValidator:
             *self._validate_budget(company, decision),
             *self._validate_client_targets(decision, state),
             *self._validate_employee_targets(company, decision, state),
+            *self._validate_candidate_targets(decision, state),
             *self._validate_sabotage(decision),
         ]
         if errors:
@@ -135,6 +139,20 @@ class DecisionValidator:
         if has_budget:
             return ["Sabotage budget requires a sabotage action"]
         return ["Sabotage action requires a sabotage budget"]
+
+    @staticmethod
+    def _validate_candidate_targets(
+        decision: CompanyDecision,
+        state: GameState,
+    ) -> list[str]:
+        errors = _duplicate_errors(decision.target_candidate_ids, "candidate")
+        available_candidates = {candidate.id for candidate in state.available_candidates}
+        invalid_candidates = set(decision.target_candidate_ids) - available_candidates
+        if invalid_candidates:
+            errors.append(
+                f"Unknown or unavailable candidates: {', '.join(sorted(invalid_candidates))}"
+            )
+        return errors
 
 
 def _duplicate_errors(target_ids: list[str], target_type: str) -> list[str]:

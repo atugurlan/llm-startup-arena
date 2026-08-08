@@ -11,10 +11,19 @@ class EmployeeRole(StrEnum):
     OPERATIONS = "operations"
 
 
+class EmployeePersonality(StrEnum):
+    AMBITIOUS = "ambitious"
+    VISIONARY = "visionary"
+    CREATIVE = "creative"
+    COMPETITIVE = "competitive"
+    RELIABLE = "reliable"
+
+
 class Employee(BaseModel):
     id: str
     name: str
     role: EmployeeRole
+    personality: EmployeePersonality = EmployeePersonality.RELIABLE
     skill: int = Field(ge=0, le=100)
     salary: int = Field(ge=0)
     morale: int = Field(default=70, ge=0, le=100)
@@ -54,5 +63,6 @@ class GameState(BaseModel):
     round_number: int = Field(default=0, ge=0)
     companies: list[Company]
     clients: list[Client]
+    available_candidates: list[Employee] = Field(default_factory=list)
     market_event: MarketEvent | None = None
     last_round_events: dict[str, list[str]] = Field(default_factory=dict)

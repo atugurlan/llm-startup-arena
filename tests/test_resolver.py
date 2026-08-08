@@ -1,7 +1,8 @@
 import pytest
 
+from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
 from llm_startup_arena.domain import Client, Company, Employee, EmployeeRole, GameState
-from llm_startup_arena.engine import RoundResolver
+from llm_startup_arena.engine import GameFactory, RoundResolver
 from llm_startup_arena.llm import BudgetAllocation, CompanyDecision
 
 
@@ -438,3 +439,83 @@ def test_employees_start_leaving_after_two_unpaid_rounds() -> None:
     assert len(first_round.companies[0].employees) == 2
     assert [employee.loyalty for employee in first_round.companies[0].employees] == [50, 50]
     assert second_round.companies[0].employees == []
+
+
+def test_external_candidate_joins_winning_company() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[0].product_score = 80
+    state.companies[1].product_score = 20
+    decisions = {
+        company_id: CompanyDecision(
+            strategy="hire ambitious engineer",
+            budget=BudgetAllocation(recruitment=20_000),
+            target_candidate_ids=["candidate-alex-chen"],
+        )
+        for company_id in ("nova", "orbit")
+    }
+
+    resolved = RoundResolver().resolve_recruitment(state, decisions)
+
+    assert any(employee.id == "candidate-alex-chen" for employee in resolved.companies[0].employees)
+    assert all(employee.id != "candidate-alex-chen" for employee in resolved.companies[1].employees)
+    assert all(candidate.id != "candidate-alex-chen" for candidate in resolved.available_candidates)
+    assert resolved.last_round_events["nova"] == ["Hired Alex Chen (engineer, ambitious)."]
+    assert resolved.last_round_events["orbit"] == ["Hiring: no external offer was accepted."]
+    assert len(state.available_candidates) == 5
+
+
+def test_external_offer_below_minimum_is_not_accepted() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    decision = CompanyDecision(
+        strategy="underfunded hiring",
+        budget=BudgetAllocation(recruitment=19_999),
+        target_candidate_ids=["candidate-elena-ionescu"],
+    )
+
+    resolved = RoundResolver().resolve_recruitment(state, {"nova": decision})
+
+    assert len(resolved.companies[0].employees) == 5
+    assert len(resolved.available_candidates) == 5
+    assert resolved.last_round_events["nova"] == ["Hiring: no external offer was accepted."]
+
+
+def test_company_can_recruit_competitor_employee() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[0].product_score = 80
+    state.companies[0].reputation = 100
+    employee_id = "orbit-employee-1"
+    decision = CompanyDecision(
+        strategy="recruit competitor engineer",
+        budget=BudgetAllocation(recruitment=100_000),
+        target_employee_ids=[employee_id],
+    )
+
+    resolved = RoundResolver().resolve_recruitment(state, {"nova": decision})
+
+    assert any(employee.id == employee_id for employee in resolved.companies[0].employees)
+    assert all(employee.id != employee_id for employee in resolved.companies[1].employees)
+    assert resolved.last_round_events["nova"] == ["Recruited Orbit Employee 1 from Orbit AI."]
+    assert resolved.last_round_events["orbit"] == ["Lost Orbit Employee 1 to Nova Labs."]
+    assert len(state.companies[0].employees) == 5
+    assert len(state.companies[1].employees) == 5
+
+
+def test_retention_can_defend_employee_from_poaching() -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    decisions = {
+        "nova": CompanyDecision(
+            strategy="recruit competitor engineer",
+            budget=BudgetAllocation(recruitment=40_000),
+            target_employee_ids=["orbit-employee-1"],
+        ),
+        "orbit": CompanyDecision(
+            strategy="retain team",
+            budget=BudgetAllocation(retention=40_000),
+        ),
+    }
+
+    resolved = RoundResolver().resolve_recruitment(state, decisions)
+
+    assert len(resolved.companies[0].employees) == 5
+    assert len(resolved.companies[1].employees) == 5
+    assert resolved.last_round_events["nova"] == ["Poaching: no employee offer was accepted."]

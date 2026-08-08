@@ -44,6 +44,11 @@ class CompanyDecision(BaseModel):
         max_length=2,
         description="Unique employee IDs belonging only to competing companies, or an empty list",
     )
+    target_candidate_ids: list[str] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Unique available external candidate IDs targeted this round, or an empty list",
+    )
     partnership_offer: str | None = None
     sabotage_action: str | None = Field(
         default=None,

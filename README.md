@@ -34,8 +34,8 @@ The LLMs choose actions. The deterministic engine calculates all consequences.
 ## Employee roles
 
 Employees are deterministic game entities, not additional LLM agents. Each employee has
-a role, skill level, salary, morale, loyalty, and experience. These values will be used by
-the game engine when it resolves company decisions.
+a role, personality, skill level, salary, morale, loyalty, and experience. These values are
+used by the game engine when it resolves company decisions.
 
 | Role | Responsibility | Planned gameplay effect |
 |---|---|---|
@@ -47,7 +47,38 @@ the game engine when it resolves company decisions.
 
 The current starting team contains two engineers and one employee each in product,
 marketing, and sales. Operations is available as a role but is not part of the initial
-five-person team. Role bonuses are planned mechanics and are not implemented yet.
+five-person team. Every role already contributes a deterministic company bonus.
+
+### Employee personalities
+
+All starting employees and external candidates have one formula-based personality. These
+profiles are data, not additional LLM agents. Recruitment will use them to represent what
+each employee values when evaluating an offer.
+
+| Personality | Main preference |
+|---|---|
+| Ambitious | Product score and career growth |
+| Visionary | Product investment and training |
+| Creative | Reputation and marketing |
+| Competitive | Salary and recruitment investment |
+| Reliable | Stability and loyalty |
+
+### External talent pool
+
+Every new game starts with five available candidates: one engineer, product specialist,
+marketer, salesperson, and operations specialist. The interface shows their role,
+personality, skill, and salary.
+
+Companies may target up to two candidates per round. Recruitment spending is divided equally
+between those targets, and each offer needs at least `$20,000` per candidate. When several
+companies target the same person, a deterministic score combines offer size, company
+reputation, and that candidate's personality preference. The winner adds the candidate to its
+team immediately, removes them from the available pool, and pays their salary that round.
+
+Companies can also target up to two employees from competitors. Recruitment spending is shared
+across all candidate and employee targets, with at least `$20,000` required per target. An offer
+competes against the employee's loyalty, the current company's reputation, and its retention
+spending. A successful offer transfers the employee immediately and updates both payrolls.
 
 ## Run locally
 
@@ -61,6 +92,10 @@ environment synchronized with `pyproject.toml` and `uv.lock`.
 
 The main screen displays four company cards. `Run next round` calls the models one at a
 time and displays each validated decision as soon as it arrives.
+
+The `Company teams` section shows the current owner, role, personality, skill, morale,
+loyalty, and salary of every employee. It updates after hiring, poaching, retention, payroll
+penalties, and departures, making employee movement directly verifiable from the interface.
 
 Run the checks with:
 
@@ -171,6 +206,14 @@ payroll is processed.
   by `20`, loyalty drops by `15`, and reputation drops by `5`;
 - morale, loyalty, and reputation cannot drop below `0`.
 
+### Low-cash strategy
+
+When a company's cash falls below `$100,000`, its model receives an explicit critical-cash
+instruction. It is asked to stop discretionary spending, preserve enough cash for payroll, and
+target up to two available high-revenue clients because client targeting itself is free. Active
+contracts continue paying revenue normally. This is strategic prompt guidance rather than an
+engine override, so the company remains responsible for its final decision.
+
 ### Morale, loyalty, and departures
 
 - an employee with morale below `40` contributes only `50%` of their skill to role bonuses;
@@ -257,6 +300,7 @@ classDiagram
         +round_number
         +companies
         +clients
+        +available_candidates
         +market_event
     }
 
@@ -272,6 +316,7 @@ classDiagram
 
     class Employee {
         +role
+        +personality
         +skill
         +salary
         +morale
@@ -294,6 +339,7 @@ classDiagram
 
     GameState *-- Company : four startups
     GameState *-- Client : twenty clients
+    GameState o-- Employee : five available candidates
     GameState o-- MarketEvent : current event
     Company *-- Employee : starting team
     Company --> Client : active contracts

@@ -214,6 +214,14 @@ def render_decision(
     budget_text = " · ".join(
         f"{escape(category.title())}: ${amount:,.0f}" for category, amount in allocations.items()
     )
+    targets = []
+    if decision.target_candidate_ids:
+        targets.append(f"Candidates: {', '.join(decision.target_candidate_ids)}")
+    if decision.target_employee_ids:
+        targets.append(f"Employees: {', '.join(decision.target_employee_ids)}")
+    if decision.target_client_ids:
+        targets.append(f"Clients: {', '.join(decision.target_client_ids)}")
+    target_text = " · ".join(escape(target) for target in targets)
     event_text = "<br>".join(f"• {escape(event)}" for event in events or [])
     outcome = (
         f'<div class="decision-budget" style="margin-top:.55rem">{event_text}</div>'
@@ -226,6 +234,7 @@ def render_decision(
             <div class="decision-label">LATEST DECISION</div>
             <div class="decision-strategy">{escape(decision.strategy)}</div>
             <div class="decision-budget">{budget_text or "No budget allocated"}</div>
+            <div class="decision-budget">{target_text}</div>
             {outcome}
         </div>
         """,
@@ -291,6 +300,51 @@ def render_company_grid(
     return decision_slots
 
 
+def render_talent_pool(state: GameState) -> None:
+    with st.expander(f"Available talent · {len(state.available_candidates)} candidates"):
+        st.dataframe(
+            [
+                {
+                    "Candidate": candidate.name,
+                    "Role": candidate.role.value.title(),
+                    "Personality": candidate.personality.value.title(),
+                    "Skill": candidate.skill,
+                    "Salary / round": f"${candidate.salary:,}",
+                }
+                for candidate in state.available_candidates
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def employee_roster_rows(state: GameState) -> list[dict[str, str | int]]:
+    return [
+        {
+            "Company": company.name,
+            "Employee": employee.name,
+            "Role": employee.role.value.title(),
+            "Personality": employee.personality.value.title(),
+            "Skill": employee.skill,
+            "Morale": employee.morale,
+            "Loyalty": employee.loyalty,
+            "Salary / round": f"${employee.salary:,}",
+        }
+        for company in state.companies
+        for employee in company.employees
+    ]
+
+
+def render_employee_rosters(state: GameState) -> None:
+    employee_count = sum(len(company.employees) for company in state.companies)
+    with st.expander(f"Company teams · {employee_count} employees"):
+        st.dataframe(
+            employee_roster_rows(state),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
 def render_arena(
     session: GameSession,
     coordinator: DecisionCoordinator,
@@ -309,6 +363,8 @@ def render_arena(
         unsafe_allow_html=True,
     )
 
+    render_talent_pool(state)
+    render_employee_rosters(state)
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
