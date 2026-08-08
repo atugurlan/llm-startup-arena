@@ -8,6 +8,7 @@ from llm_startup_arena.llm import (
     DecisionNormalizer,
     DecisionValidationError,
     DecisionValidator,
+    SabotageAction,
 )
 
 
@@ -41,7 +42,8 @@ def test_normalizer_repairs_recoverable_model_mistakes(game_state) -> None:
         budget=BudgetAllocation(recruitment=10_000, sabotage=20_000),
         target_client_ids=["client-1", "client-2"],
         target_employee_ids=["nova-employee-1", "orbit-employee-1"],
-        sabotage_action=None,
+        sabotage_action=SabotageAction.REPUTATION_ATTACK,
+        target_company_id="orbit",
     )
 
     normalized = DecisionNormalizer().normalize(
@@ -54,6 +56,7 @@ def test_normalizer_repairs_recoverable_model_mistakes(game_state) -> None:
     assert normalized.target_employee_ids == ["orbit-employee-1"]
     assert normalized.budget.sabotage == 0
     assert normalized.sabotage_action is None
+    assert normalized.target_company_id is None
     assert decision.target_client_ids == ["client-1", "client-2"]
     assert decision.budget.sabotage == 20_000
     assert (
@@ -165,25 +168,77 @@ def test_normalizer_removes_candidate_target_without_budget(game_state) -> None:
     assert normalized.target_candidate_ids == []
 
 
-@pytest.mark.parametrize(
-    ("budget", "action", "message"),
-    [
-        (10_000, None, "budget requires a sabotage action"),
-        (0, "spread rumors", "action requires a sabotage budget"),
-    ],
-)
-def test_validator_requires_consistent_sabotage(
-    game_state,
-    budget: int,
-    action: str | None,
-    message: str,
-) -> None:
+def test_validator_accepts_complete_sabotage_contract(game_state) -> None:
     decision = CompanyDecision(
         strategy="sabotage",
-        budget=BudgetAllocation(sabotage=budget),
-        sabotage_action=action,
+        budget=BudgetAllocation(sabotage=20_000),
+        sabotage_action=SabotageAction.REPUTATION_ATTACK,
+        target_company_id="orbit",
     )
 
+    assert (
+        DecisionValidator().validate(
+            company_id="nova",
+            decision=decision,
+            state=game_state,
+        )
+        is decision
+    )
+
+
+@pytest.mark.parametrize(
+    ("decision", "message"),
+    [
+        (
+            CompanyDecision(
+                strategy="too cheap",
+                budget=BudgetAllocation(sabotage=10_000),
+                sabotage_action=SabotageAction.PRODUCT_DISRUPTION,
+                target_company_id="orbit",
+            ),
+            "must be at least 20000",
+        ),
+        (
+            CompanyDecision(
+                strategy="missing action and target",
+                budget=BudgetAllocation(sabotage=20_000),
+            ),
+            "requires a sabotage action; Sabotage budget requires a target company",
+        ),
+        (
+            CompanyDecision(
+                strategy="action without budget",
+                budget=BudgetAllocation(),
+                sabotage_action=SabotageAction.CLIENT_INTERFERENCE,
+                target_company_id="orbit",
+            ),
+            "action requires a sabotage budget; Sabotage target requires a sabotage budget",
+        ),
+        (
+            CompanyDecision(
+                strategy="self sabotage",
+                budget=BudgetAllocation(sabotage=20_000),
+                sabotage_action=SabotageAction.TALENT_DISRUPTION,
+                target_company_id="nova",
+            ),
+            "cannot sabotage itself",
+        ),
+        (
+            CompanyDecision(
+                strategy="unknown target",
+                budget=BudgetAllocation(sabotage=20_000),
+                sabotage_action=SabotageAction.REPUTATION_ATTACK,
+                target_company_id="missing",
+            ),
+            "Unknown target company: missing",
+        ),
+    ],
+)
+def test_validator_rejects_invalid_sabotage_contract(
+    game_state,
+    decision: CompanyDecision,
+    message: str,
+) -> None:
     with pytest.raises(DecisionValidationError, match=message):
         DecisionValidator().validate(
             company_id="nova",

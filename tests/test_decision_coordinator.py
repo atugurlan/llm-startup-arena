@@ -151,3 +151,4 @@ def test_coordinator_normalizes_recoverable_mistakes() -> None:
         assert decision.target_employee_ids == []
         assert decision.budget.sabotage == 0
         assert decision.sabotage_action is None
+        assert decision.target_company_id is None

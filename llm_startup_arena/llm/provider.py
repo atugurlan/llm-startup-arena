@@ -1,8 +1,18 @@
+from enum import StrEnum
 from typing import Protocol
 
 from pydantic import BaseModel, Field
 
 from llm_startup_arena.domain import GameState
+
+
+class SabotageAction(StrEnum):
+    """Sabotage strategies supported by the game contract."""
+
+    PRODUCT_DISRUPTION = "product_disruption"
+    REPUTATION_ATTACK = "reputation_attack"
+    CLIENT_INTERFERENCE = "client_interference"
+    TALENT_DISRUPTION = "talent_disruption"
 
 
 class BudgetAllocation(BaseModel):
@@ -49,9 +59,13 @@ class CompanyDecision(BaseModel):
         max_length=2,
         description="Unique available external candidate IDs targeted this round, or an empty list",
     )
-    sabotage_action: str | None = Field(
+    sabotage_action: SabotageAction | None = Field(
         default=None,
         description="Required when sabotage budget is positive; otherwise null",
+    )
+    target_company_id: str | None = Field(
+        default=None,
+        description="Competing company targeted by sabotage, or null without sabotage",
     )
 
 

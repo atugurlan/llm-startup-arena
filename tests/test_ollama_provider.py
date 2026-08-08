@@ -46,6 +46,14 @@ def test_provider_returns_validated_decision() -> None:
     assert client.request is not None
     assert client.request["think"] is False
     assert "partnership_offer" not in client.request["format"]["properties"]
+    assert "target_company_id" in client.request["format"]["properties"]
+    sabotage_schema = client.request["format"]["$defs"]["SabotageAction"]
+    assert sabotage_schema["enum"] == [
+        "product_disruption",
+        "reputation_attack",
+        "client_interference",
+        "talent_disruption",
+    ]
 
 
 class RetryingOllamaClient(FakeOllamaClient):
@@ -84,7 +92,7 @@ def test_provider_retries_once_with_validation_feedback() -> None:
     retry_message = client.requests[1]["messages"][-1]["content"]
     assert "exceeds available cash" in retry_message
     assert "Return a complete replacement JSON decision" in retry_message
-    assert "sabotage=0 and sabotage_action=null" in retry_message
+    assert "sabotage=0, sabotage_action=null, and target_company_id=null" in retry_message
     assert client.requests[1]["options"]["temperature"] == 0.1
 
 

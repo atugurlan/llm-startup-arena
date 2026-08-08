@@ -59,7 +59,8 @@ STRICT OUTPUT RULES — check every rule before responding:
 7. Recruitment budget is shared across candidate and employee targets.
 8. With no recruitment targets, recruitment=0. Otherwise use at least 20000 per total target.
 9. recruitment must be chosen from {standard_budgets}.
-10. Sabotage is unavailable: sabotage must always be 0 and sabotage_action must be null.
+10. Sabotage is unavailable: sabotage must always be 0, sabotage_action must be null,
+    and target_company_id must be null.
 11. Keep strategy short and refer only to {company.name!r}.
 
 PAYROLL OBLIGATION:
@@ -133,7 +134,7 @@ FINAL SELF-CHECK:
 - Every target ID appears in an allowed list above.
 - Every budget appears in its allowed budget list above.
 - recruitment provides at least 20000 for every candidate and employee target combined.
-- sabotage=0 and sabotage_action=null.
+- sabotage=0, sabotage_action=null, and target_company_id=null.
 - Total budget is at most {safe_discretionary_budget}.
 
 YOUR COMPANY STATE ONLY:
@@ -163,7 +164,7 @@ Return a complete replacement JSON decision using only these constraints:
 - valid candidate IDs: {available_candidates}
 - valid competitor employee IDs: {recruitable_employees}
 - recruitment=0 with no targets; otherwise use at least 20000 per candidate and employee target
-- sabotage=0 and sabotage_action=null
+- sabotage=0, sabotage_action=null, and target_company_id=null
 - total budget <= {safe_budget}
 Return JSON only.
 """.strip()

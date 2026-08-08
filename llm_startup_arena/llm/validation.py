@@ -2,6 +2,8 @@ from llm_startup_arena.domain import Company, GameState
 
 from .provider import CompanyDecision
 
+MIN_SABOTAGE_BUDGET = 20_000
+
 
 class DecisionValidationError(ValueError):
     """Raised when a company decision violates one or more game rules."""
@@ -50,6 +52,7 @@ class DecisionNormalizer:
 
         normalized.budget.sabotage = 0
         normalized.sabotage_action = None
+        normalized.target_company_id = None
 
         return normalized
 
@@ -70,7 +73,7 @@ class DecisionValidator:
             *self._validate_client_targets(decision, state),
             *self._validate_employee_targets(company, decision, state),
             *self._validate_candidate_targets(decision, state),
-            *self._validate_sabotage(decision),
+            *self._validate_sabotage(company, decision, state),
         ]
         if errors:
             raise DecisionValidationError(errors)
@@ -131,14 +134,38 @@ class DecisionValidator:
         return errors
 
     @staticmethod
-    def _validate_sabotage(decision: CompanyDecision) -> list[str]:
+    def _validate_sabotage(
+        company: Company,
+        decision: CompanyDecision,
+        state: GameState,
+    ) -> list[str]:
         has_budget = decision.budget.sabotage > 0
-        has_action = bool(decision.sabotage_action and decision.sabotage_action.strip())
-        if has_budget == has_action:
-            return []
-        if has_budget:
-            return ["Sabotage budget requires a sabotage action"]
-        return ["Sabotage action requires a sabotage budget"]
+        has_action = decision.sabotage_action is not None
+        has_target = decision.target_company_id is not None
+
+        if not has_budget:
+            errors = []
+            if has_action:
+                errors.append("Sabotage action requires a sabotage budget")
+            if has_target:
+                errors.append("Sabotage target requires a sabotage budget")
+            return errors
+
+        errors = []
+        if decision.budget.sabotage < MIN_SABOTAGE_BUDGET:
+            errors.append(f"Sabotage budget must be at least {MIN_SABOTAGE_BUDGET}")
+        if not has_action:
+            errors.append("Sabotage budget requires a sabotage action")
+        if not has_target:
+            errors.append("Sabotage budget requires a target company")
+            return errors
+
+        company_ids = {candidate.id for candidate in state.companies}
+        if decision.target_company_id not in company_ids:
+            errors.append(f"Unknown target company: {decision.target_company_id}")
+        elif decision.target_company_id == company.id:
+            errors.append("A company cannot sabotage itself")
+        return errors
 
     @staticmethod
     def _validate_candidate_targets(

@@ -130,7 +130,7 @@ Decision validation currently enforces:
 - the total budget cannot exceed company cash;
 - client and employee targets must exist and be unique;
 - companies cannot recruit their own employees;
-- sabotage actions and sabotage budgets must be consistent;
+- sabotage requires a supported action, a competing company target, and at least `$20,000`;
 - one invalid model response does not stop the other companies.
 
 ## Economic rules
@@ -152,7 +152,18 @@ flowchart LR
 - every `$20,000` invested in `product` adds one `product_score` point;
 - every `$20,000` invested in `marketing` adds one reputation point;
 - product score and reputation are capped at `100`;
-- the effects of recruitment and sabotage are added in later stages.
+- sabotage effects are added in a later stage.
+
+### Sabotage contract
+
+The decision schema is ready for four sabotage actions: `product_disruption`,
+`reputation_attack`, `client_interference`, and `talent_disruption`. A sabotage decision must
+spend at least `$20,000`, select one of these actions, and identify an existing competing
+company through `target_company_id`. A company cannot target itself.
+
+The resolver does not apply sabotage effects yet. Until that stage is implemented, the model
+prompt and decision normalizer keep sabotage disabled by setting its budget to `0` and both
+the action and target to `null`.
 
 ### Training
 
@@ -232,8 +243,8 @@ the principal economic effects can be verified without inspecting the internal g
 Repeated client events are aggregated to keep all four outcome cells compact and aligned.
 
 Before validation, recoverable model mistakes are normalized: duplicate or unavailable client
-targets and invalid employee targets are removed, while an incomplete sabotage allocation is
-reset to zero. Overspending and malformed responses remain hard errors and reject the decision.
+targets and invalid employee targets are removed, while sabotage is reset to its currently
+disabled state. Overspending and malformed responses remain hard errors and reject the decision.
 
 ## Architecture
 
