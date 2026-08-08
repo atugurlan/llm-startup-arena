@@ -92,7 +92,8 @@ def test_provider_retries_once_with_validation_feedback() -> None:
     retry_message = client.requests[1]["messages"][-1]["content"]
     assert "exceeds available cash" in retry_message
     assert "Return a complete replacement JSON decision" in retry_message
-    assert "sabotage=0, sabotage_action=null, and target_company_id=null" in retry_message
+    assert "valid sabotage actions" in retry_message
+    assert "valid competitor company IDs" in retry_message
     assert client.requests[1]["options"]["temperature"] == 0.1
 
 

@@ -28,6 +28,19 @@ def build_company_prompt(company_id: str, state: GameState) -> str:
         for employee in competitor.employees
     ]
     recruitable_employee_ids = [employee["id"] for employee in recruitable_employees]
+    competitor_targets = [
+        {
+            "id": competitor.id,
+            "name": competitor.name,
+            "product_score": competitor.product_score,
+            "reputation": competitor.reputation,
+            "employees": len(competitor.employees),
+            "clients": len(competitor.client_ids),
+        }
+        for competitor in state.companies
+        if competitor.id != company_id
+    ]
+    competitor_ids = [competitor["id"] for competitor in competitor_targets]
     payroll = sum(employee.salary for employee in company.employees)
     safe_discretionary_budget = max(0, company.cash - payroll)
     standard_budgets = _allowed_budgets(safe_discretionary_budget, 20_000)
@@ -59,9 +72,12 @@ STRICT OUTPUT RULES — check every rule before responding:
 7. Recruitment budget is shared across candidate and employee targets.
 8. With no recruitment targets, recruitment=0. Otherwise use at least 20000 per total target.
 9. recruitment must be chosen from {standard_budgets}.
-10. Sabotage is unavailable: sabotage must always be 0, sabotage_action must be null,
-    and target_company_id must be null.
-11. Keep strategy short and refer only to {company.name!r}.
+10. sabotage must be chosen from {standard_budgets}.
+11. With sabotage=0, sabotage_action and target_company_id must both be null.
+12. With sabotage>0, use at least 20000, choose one SABOTAGE ACTION, and copy exactly one
+    target_company_id from VALID COMPETITOR COMPANY IDS.
+13. Never target your own company with sabotage.
+14. Keep strategy short and refer only to {company.name!r}.
 
 PAYROLL OBLIGATION:
 - Employee salaries are paid after your decision budget at the end of every round.
@@ -85,6 +101,12 @@ RECRUITABLE EMPLOYEE IDS:
 
 RECRUITABLE EMPLOYEE DETAILS:
 {recruitable_employees}
+
+VALID COMPETITOR COMPANY IDS:
+{competitor_ids}
+
+COMPETITOR COMPANY DETAILS:
+{competitor_targets}
 
 CLIENT ACQUISITION AND REVENUE:
 - Only target IDs from VALID CLIENT IDS; clients already under contract are unavailable.
@@ -120,6 +142,17 @@ COMPETITOR EMPLOYEE RECRUITMENT:
 - The offer competes against employee loyalty, current company reputation, and retention.
 - A successful transfer moves the employee immediately and updates both companies' payroll.
 
+SABOTAGE:
+- Available actions: product_disruption, reputation_attack, client_interference,
+  talent_disruption.
+- Every 20000 sabotage spending creates one effect level.
+- product_disruption removes 2 product score per level.
+- reputation_attack removes 2 reputation per level.
+- client_interference shortens one active client contract by one round per level.
+- talent_disruption removes 4 morale and 2 loyalty from every target employee per level.
+- Sabotage spending is deducted even when an effect is limited by zero scores or no clients.
+- Use sabotage selectively when its expected harm is worth more than direct growth spending.
+
 EMPLOYEE ROLE BONUSES:
 - Current effective role power: {role_power}
 - Employees with morale below 40 contribute only 50% of their skill to role power.
@@ -134,7 +167,8 @@ FINAL SELF-CHECK:
 - Every target ID appears in an allowed list above.
 - Every budget appears in its allowed budget list above.
 - recruitment provides at least 20000 for every candidate and employee target combined.
-- sabotage=0, sabotage_action=null, and target_company_id=null.
+- With sabotage=0, sabotage_action=null and target_company_id=null.
+- With sabotage>0, the action is valid and target_company_id appears in {competitor_ids}.
 - Total budget is at most {safe_discretionary_budget}.
 
 YOUR COMPANY STATE ONLY:
@@ -154,6 +188,9 @@ def build_correction_prompt(company_id: str, state: GameState, error: Exception)
         if competitor.id != company_id
         for employee in competitor.employees
     ]
+    competitor_ids = [
+        competitor.id for competitor in state.companies if competitor.id != company_id
+    ]
     return f"""
 The previous decision for {company.name!r} was invalid: {error}
 
@@ -164,7 +201,12 @@ Return a complete replacement JSON decision using only these constraints:
 - valid candidate IDs: {available_candidates}
 - valid competitor employee IDs: {recruitable_employees}
 - recruitment=0 with no targets; otherwise use at least 20000 per candidate and employee target
-- sabotage=0, sabotage_action=null, and target_company_id=null
+- sabotage: {_allowed_budgets(safe_budget, 20_000)}
+- valid sabotage actions: product_disruption, reputation_attack, client_interference,
+  talent_disruption
+- valid competitor company IDs: {competitor_ids}
+- with sabotage=0 use sabotage_action=null and target_company_id=null; with sabotage>0 use
+  at least 20000, one valid action, and one valid competitor company ID
 - total budget <= {safe_budget}
 Return JSON only.
 """.strip()

@@ -23,9 +23,11 @@ def test_company_prompt_explains_budget_and_sabotage_rules() -> None:
     prompt = build_company_prompt("nova", state)
 
     assert "safe discretionary budget 475000" in prompt
-    assert "Sabotage is unavailable" in prompt
-    assert "sabotage must always be 0" in prompt
-    assert "target_company_id must be null" in prompt
+    assert "VALID COMPETITOR COMPANY IDS" in prompt
+    assert "['orbit', 'pixel', 'apex']" in prompt
+    assert "Every 20000 sabotage spending creates one effect level" in prompt
+    assert "product_disruption removes 2 product score" in prompt
+    assert "talent_disruption removes 4 morale and 2 loyalty" in prompt
     assert "partnership" not in prompt.casefold()
 
 
@@ -133,6 +135,8 @@ def test_correction_prompt_repeats_current_allowed_values() -> None:
     assert "candidate-alex-chen" in prompt
     assert "valid competitor employee IDs" in prompt
     assert "total budget <= 475000" in prompt
+    assert "valid competitor company IDs: ['orbit', 'pixel', 'apex']" in prompt
+    assert "valid sabotage actions" in prompt
 
 
 def test_company_prompt_enters_critical_cash_mode_below_threshold() -> None:

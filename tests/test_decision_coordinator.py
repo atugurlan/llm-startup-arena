@@ -67,7 +67,7 @@ class RecoverableMistakeProvider:
     ) -> CompanyDecision:
         return CompanyDecision(
             strategy="recover invalid targets",
-            budget=BudgetAllocation(sabotage=10_000),
+            budget=BudgetAllocation(),
             target_client_ids=["missing-client"],
             target_employee_ids=[f"{company_id}-employee-1"],
         )

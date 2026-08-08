@@ -14,7 +14,7 @@ class DecisionValidationError(ValueError):
 
 
 class DecisionNormalizer:
-    """Repair harmless LLM target and sabotage inconsistencies before validation."""
+    """Repair harmless LLM target inconsistencies before validation."""
 
     def normalize(
         self,
@@ -50,9 +50,9 @@ class DecisionNormalizer:
             normalized.target_candidate_ids = []
             normalized.target_employee_ids = []
 
-        normalized.budget.sabotage = 0
-        normalized.sabotage_action = None
-        normalized.target_company_id = None
+        if normalized.budget.sabotage == 0:
+            normalized.sabotage_action = None
+            normalized.target_company_id = None
 
         return normalized
 

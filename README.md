@@ -152,7 +152,7 @@ flowchart LR
 - every `$20,000` invested in `product` adds one `product_score` point;
 - every `$20,000` invested in `marketing` adds one reputation point;
 - product score and reputation are capped at `100`;
-- sabotage effects are added in a later stage.
+- sabotage spending is resolved after client acquisition and before payroll.
 
 ### Sabotage contract
 
@@ -170,8 +170,8 @@ The resolver applies one sabotage level for every `$20,000` spent:
 - `talent_disruption` removes `4` morale and `2` loyalty from every target employee per level.
 
 Effects never reduce scores below zero. Both the attacker and target receive a round event that
-describes the result. The model prompt and normalizer still keep sabotage disabled until the next
-integration stage, when models will receive the rules and valid company targets.
+describes the result. Models receive the available actions, their deterministic effects, and valid
+competitor company IDs in every decision prompt.
 
 ### Training
 
@@ -251,8 +251,9 @@ the principal economic effects can be verified without inspecting the internal g
 Repeated client events are aggregated to keep all four outcome cells compact and aligned.
 
 Before validation, recoverable model mistakes are normalized: duplicate or unavailable client
-targets and invalid employee targets are removed, while sabotage is reset to its currently
-disabled state. Overspending and malformed responses remain hard errors and reject the decision.
+targets and invalid employee targets are removed. Empty sabotage allocations have their dangling
+action or target cleared, while funded sabotage decisions remain subject to full validation.
+Overspending and malformed responses remain hard errors and reject the decision.
 
 ## Architecture
 

@@ -54,9 +54,9 @@ def test_normalizer_repairs_recoverable_model_mistakes(game_state) -> None:
 
     assert normalized.target_client_ids == ["client-1"]
     assert normalized.target_employee_ids == ["orbit-employee-1"]
-    assert normalized.budget.sabotage == 0
-    assert normalized.sabotage_action is None
-    assert normalized.target_company_id is None
+    assert normalized.budget.sabotage == 20_000
+    assert normalized.sabotage_action is SabotageAction.REPUTATION_ATTACK
+    assert normalized.target_company_id == "orbit"
     assert decision.target_client_ids == ["client-1", "client-2"]
     assert decision.budget.sabotage == 20_000
     assert (
