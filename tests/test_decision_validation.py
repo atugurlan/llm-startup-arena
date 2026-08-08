@@ -18,10 +18,10 @@ def game_state():
 
 def test_validator_accepts_valid_decision(game_state) -> None:
     decision = CompanyDecision(
-        strategy="Acquire a client and recruit from a competitor",
-        budget=BudgetAllocation(product=100_000, recruitment=50_000),
+        strategy="Acquire a client and hire external talent",
+        budget=BudgetAllocation(product=100_000, recruitment=20_000),
         target_client_ids=["client-1"],
-        target_employee_ids=["orbit-employee-1"],
+        target_candidate_ids=["candidate-alex-chen"],
     )
 
     result = DecisionValidator().validate(
@@ -51,7 +51,7 @@ def test_normalizer_repairs_recoverable_model_mistakes(game_state) -> None:
     )
 
     assert normalized.target_client_ids == ["client-1"]
-    assert normalized.target_employee_ids == ["orbit-employee-1"]
+    assert normalized.target_employee_ids == []
     assert normalized.budget.sabotage == 0
     assert normalized.sabotage_action is None
     assert decision.target_client_ids == ["client-1", "client-2"]
@@ -149,19 +149,20 @@ def test_validator_accepts_available_candidate_with_recruitment_budget(game_stat
     )
 
 
-def test_validator_requires_budget_for_candidate_target(game_state) -> None:
+def test_normalizer_removes_candidate_target_without_budget(game_state) -> None:
     decision = CompanyDecision(
         strategy="free hire",
         budget=BudgetAllocation(),
         target_candidate_ids=["candidate-alex-chen"],
     )
 
-    with pytest.raises(DecisionValidationError, match="require a recruitment budget"):
-        DecisionValidator().validate(
-            company_id="nova",
-            decision=decision,
-            state=game_state,
-        )
+    normalized = DecisionNormalizer().normalize(
+        company_id="nova",
+        decision=decision,
+        state=game_state,
+    )
+
+    assert normalized.target_candidate_ids == []
 
 
 @pytest.mark.parametrize(

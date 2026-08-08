@@ -44,13 +44,12 @@ class DecisionNormalizer:
             {candidate.id for candidate in state.available_candidates},
         )
 
-        has_sabotage_budget = normalized.budget.sabotage > 0
-        has_sabotage_action = bool(
-            normalized.sabotage_action and normalized.sabotage_action.strip()
-        )
-        if has_sabotage_budget != has_sabotage_action:
-            normalized.budget.sabotage = 0
-            normalized.sabotage_action = None
+        if normalized.budget.recruitment == 0:
+            normalized.target_candidate_ids = []
+        normalized.target_employee_ids = []
+
+        normalized.budget.sabotage = 0
+        normalized.sabotage_action = None
 
         return normalized
 
@@ -153,8 +152,6 @@ class DecisionValidator:
             errors.append(
                 f"Unknown or unavailable candidates: {', '.join(sorted(invalid_candidates))}"
             )
-        if decision.target_candidate_ids and decision.budget.recruitment == 0:
-            errors.append("Candidate targets require a recruitment budget")
         return errors
 
 
