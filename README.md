@@ -34,8 +34,8 @@ The LLMs choose actions. The deterministic engine calculates all consequences.
 ## Employee roles
 
 Employees are deterministic game entities, not additional LLM agents. Each employee has
-a role, skill level, salary, morale, loyalty, and experience. These values will be used by
-the game engine when it resolves company decisions.
+a role, personality, skill level, salary, morale, loyalty, and experience. These values are
+used by the game engine when it resolves company decisions.
 
 | Role | Responsibility | Planned gameplay effect |
 |---|---|---|
@@ -47,7 +47,28 @@ the game engine when it resolves company decisions.
 
 The current starting team contains two engineers and one employee each in product,
 marketing, and sales. Operations is available as a role but is not part of the initial
-five-person team. Role bonuses are planned mechanics and are not implemented yet.
+five-person team. Every role already contributes a deterministic company bonus.
+
+### Employee personalities
+
+All starting employees and external candidates have one formula-based personality. These
+profiles are data, not additional LLM agents. Recruitment will use them to represent what
+each employee values when evaluating an offer.
+
+| Personality | Main preference |
+|---|---|
+| Ambitious | Product score and career growth |
+| Visionary | Product investment and training |
+| Creative | Reputation and marketing |
+| Competitive | Salary and recruitment investment |
+| Reliable | Stability and loyalty |
+
+### External talent pool
+
+Every new game starts with five available candidates: one engineer, product specialist,
+marketer, salesperson, and operations specialist. The interface shows their role,
+personality, skill, and salary. Hiring resolution is implemented separately so this initial
+commit only introduces the deterministic candidate pool.
 
 ## Run locally
 
@@ -257,6 +278,7 @@ classDiagram
         +round_number
         +companies
         +clients
+        +available_candidates
         +market_event
     }
 
@@ -272,6 +294,7 @@ classDiagram
 
     class Employee {
         +role
+        +personality
         +skill
         +salary
         +morale
@@ -294,6 +317,7 @@ classDiagram
 
     GameState *-- Company : four startups
     GameState *-- Client : twenty clients
+    GameState o-- Employee : five available candidates
     GameState o-- MarketEvent : current event
     Company *-- Employee : starting team
     Company --> Client : active contracts

@@ -1,6 +1,7 @@
 import pytest
 
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
+from llm_startup_arena.domain import EmployeePersonality, EmployeeRole
 from llm_startup_arena.engine import GameFactory
 
 
@@ -16,6 +17,16 @@ def test_factory_creates_complete_initial_state() -> None:
     assert {company.cash for company in state.companies} == {config.starting_cash}
     assert {len(company.employees) for company in state.companies} == {config.starting_employees}
     assert all(client.company_id is None for client in state.clients)
+    assert len(state.available_candidates) == 5
+    assert {candidate.role for candidate in state.available_candidates} == set(EmployeeRole)
+    assert {candidate.personality for candidate in state.available_candidates} == set(
+        EmployeePersonality
+    )
+    assert all(
+        employee.personality in EmployeePersonality
+        for company in state.companies
+        for employee in company.employees
+    )
 
 
 def test_factory_is_deterministic() -> None:

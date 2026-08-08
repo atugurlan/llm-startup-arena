@@ -291,6 +291,24 @@ def render_company_grid(
     return decision_slots
 
 
+def render_talent_pool(state: GameState) -> None:
+    with st.expander(f"Available talent · {len(state.available_candidates)} candidates"):
+        st.dataframe(
+            [
+                {
+                    "Candidate": candidate.name,
+                    "Role": candidate.role.value.title(),
+                    "Personality": candidate.personality.value.title(),
+                    "Skill": candidate.skill,
+                    "Salary / round": f"${candidate.salary:,}",
+                }
+                for candidate in state.available_candidates
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
 def render_arena(
     session: GameSession,
     coordinator: DecisionCoordinator,
@@ -309,6 +327,7 @@ def render_arena(
         unsafe_allow_html=True,
     )
 
+    render_talent_pool(state)
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
