@@ -9,17 +9,23 @@ from streamlit.delta_generator import DeltaGenerator
 
 from llm_startup_arena.config import AppConfig
 from llm_startup_arena.domain import Company, GameState, RoundSnapshot
-from llm_startup_arena.engine import CompanyRanker, GameFactory, GameResult, RoundResolver
+from llm_startup_arena.engine import (
+    CompanyRanker,
+    CompanyScore,
+    GameFactory,
+    GameResult,
+    RoundResolver,
+)
 from llm_startup_arena.llm import CompanyDecision, DecisionCoordinator, RoundDecisionRecord
 from llm_startup_arena.llm.ollama_provider import OllamaProvider
 
 from .session import GameSession
 
 COMPANY_COLORS = {
-    "nova": ("#7C5CFC", "#A78BFA"),
-    "orbit": ("#00B8A9", "#2DD4BF"),
-    "pixel": ("#F59E0B", "#FBBF24"),
-    "apex": ("#EF476F", "#FB7185"),
+    "nova": ("#A78BFA", "#6D28D9"),
+    "orbit": ("#5EEAD4", "#0F766E"),
+    "pixel": ("#FCD34D", "#B45309"),
+    "apex": ("#FDA4AF", "#BE123C"),
 }
 
 
@@ -27,60 +33,83 @@ def inject_styles() -> None:
     st.markdown(
         """
         <style>
-        .stApp { background: #0b1020; }
-        .block-container { max-width: 1400px; padding-top: 2.5rem; }
+        .stApp { background: #f4f7fb; color: #1e293b; }
+        .block-container {
+            max-width: 1480px; padding-top: 4rem; padding-bottom: 2rem;
+        }
         .arena-header {
-            padding: 1.5rem 1.75rem; margin-bottom: 1.5rem;
-            border: 1px solid #25304a; border-radius: 18px;
-            background: linear-gradient(135deg, #151d35 0%, #10162a 100%);
+            padding: 1rem 1.35rem; margin-bottom: .65rem;
+            border: 1px solid #dce3ef; border-radius: 18px;
+            background:
+                radial-gradient(circle at 85% 20%, rgba(167, 139, 250, .22), transparent 28%),
+                linear-gradient(135deg, #ffffff 0%, #f3f0ff 100%);
+            box-shadow: 0 8px 28px rgba(71, 85, 105, .08);
         }
-        .arena-kicker { color: #9ca8c7; font-size: .82rem; letter-spacing: .12em; }
-        .arena-title { color: #f8fafc; font-size: 2.15rem; font-weight: 750; margin: .2rem 0; }
-        .arena-subtitle { color: #9ca8c7; margin: 0; }
+        .arena-kicker { color: #64748b; font-size: .7rem; letter-spacing: .14em; }
+        .arena-title { color: #172033; font-size: 1.65rem; font-weight: 760; margin: .1rem 0; }
+        .arena-subtitle { color: #64748b; font-size: .84rem; margin: 0; }
         .company-card {
-            min-height: 310px; padding: 1.35rem; border-radius: 18px;
-            border: 1px solid #29334d; background: #131a2d;
-            box-shadow: 0 12px 32px rgba(0, 0, 0, .2);
+            min-height: 200px; padding: .85rem 1rem; border-radius: 18px 18px 0 0;
+            border: 1px solid #dce3ef; background: #ffffff;
+            box-shadow: 0 12px 28px rgba(71, 85, 105, .09);
         }
-        .company-accent { height: 5px; border-radius: 10px; margin-bottom: 1.2rem; }
-        .company-name { color: #f8fafc; font-size: 1.25rem; font-weight: 700; }
-        .model-name { color: #8f9ab7; font-size: .82rem; margin: .25rem 0 1.25rem; }
-        .cash { color: #f8fafc; font-size: 1.75rem; font-weight: 750; }
-        .cash-label { color: #7f8aa6; font-size: .72rem; letter-spacing: .09em; }
-        .card-divider { border-top: 1px solid #29334d; margin: 1.15rem 0; }
-        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }
-        .metric-value { color: #e8ecf7; font-size: 1.08rem; font-weight: 650; }
-        .metric-label { color: #7f8aa6; font-size: .7rem; }
+        .company-accent { height: 4px; border-radius: 10px; margin-bottom: .8rem; }
+        .company-topline { display: flex; justify-content: space-between; gap: .5rem; }
+        .company-name { color: #172033; font-size: 1.08rem; font-weight: 700; }
+        .live-rank { font-size: .68rem; font-weight: 700; letter-spacing: .06em; }
+        .model-name { color: #718096; font-size: .72rem; margin: .1rem 0 .8rem; }
+        .cash { color: #172033; font-size: 1.45rem; font-weight: 750; }
+        .cash-label { color: #8491a7; font-size: .62rem; letter-spacing: .09em; }
+        .valuation { color: #64748b; font-size: .68rem; margin-top: .15rem; }
+        .card-divider { border-top: 1px solid #e5eaf2; margin: .8rem 0; }
+        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .35rem; }
+        .metric-value { color: #334155; font-size: .92rem; font-weight: 650; }
+        .metric-label { color: #8491a7; font-size: .6rem; }
         .status-pill {
-            display: inline-block; padding: .3rem .65rem; margin-top: 1.25rem;
-            border-radius: 999px; font-size: .72rem; font-weight: 650;
+            display: inline-block; padding: .22rem .55rem; margin-top: .8rem;
+            border-radius: 999px; font-size: .62rem; font-weight: 650;
         }
-        .round-note { color: #7f8aa6; font-size: .82rem; margin-top: .5rem; }
-        .model-progress { color: #aeb8d4; font-size: .82rem; margin-top: .5rem; }
+        .round-note { color: #64748b; font-size: .74rem; margin-top: .35rem; }
+        .model-progress { color: #475569; font-size: .74rem; margin-top: .35rem; }
         .decision-box {
-            height: 310px; margin-top: .75rem; padding: .85rem 1rem;
-            border: 1px solid #29334d; border-radius: 14px; background: #101627;
+            height: 205px; margin-top: 0; padding: .8rem .9rem;
+            border: 1px solid #dce3ef; border-top: 0;
+            border-radius: 0 0 18px 18px; background: #f9fbfe;
             overflow-y: auto; box-sizing: border-box;
         }
-        .decision-label { color: #7f8aa6; font-size: .68rem; letter-spacing: .08em; }
-        .decision-strategy { color: #e8ecf7; font-size: .88rem; margin: .3rem 0 .65rem; }
-        .decision-budget { color: #9ca8c7; font-size: .75rem; line-height: 1.45; }
+        .decision-label { color: #8491a7; font-size: .68rem; letter-spacing: .08em; }
+        .decision-strategy { color: #334155; font-size: .88rem; margin: .3rem 0 .65rem; }
+        .decision-budget { color: #64748b; font-size: .75rem; line-height: 1.45; }
         .ranking-header {
             margin: 0 0 1rem; padding: 1.25rem 1.5rem; text-align: center;
-            border: 1px solid #3b4770; border-radius: 18px;
-            background: linear-gradient(135deg, #1b2542 0%, #131a2d 100%);
+            border: 1px solid #ddd6fe; border-radius: 18px;
+            background: linear-gradient(135deg, #ffffff 0%, #f3f0ff 100%);
         }
-        .ranking-title { color: #f8fafc; font-size: 1.5rem; font-weight: 750; }
-        .ranking-winner { color: #fbbf24; font-size: 1rem; margin-top: .3rem; }
+        .ranking-title { color: #172033; font-size: 1.5rem; font-weight: 750; }
+        .ranking-winner { color: #7c3aed; font-size: 1rem; margin-top: .3rem; }
         .ranking-card {
-            min-height: 230px; padding: 1rem; border: 1px solid #29334d;
-            border-radius: 16px; background: #101627;
+            min-height: 230px; padding: 1rem; border: 1px solid #dce3ef;
+            border-radius: 16px; background: #ffffff;
         }
-        .ranking-position { color: #fbbf24; font-size: 1.4rem; font-weight: 750; }
-        .ranking-company { color: #f8fafc; font-size: 1.05rem; font-weight: 700; }
-        .ranking-model { color: #7f8aa6; font-size: .72rem; margin-bottom: .8rem; }
-        .ranking-total { color: #e8ecf7; font-size: 1.25rem; font-weight: 700; }
-        .ranking-breakdown { color: #9ca8c7; font-size: .72rem; line-height: 1.6; }
+        .ranking-position { color: #7c3aed; font-size: 1.4rem; font-weight: 750; }
+        .ranking-company { color: #172033; font-size: 1.05rem; font-weight: 700; }
+        .ranking-model { color: #8491a7; font-size: .72rem; margin-bottom: .8rem; }
+        .ranking-total { color: #334155; font-size: 1.25rem; font-weight: 700; }
+        .ranking-breakdown { color: #64748b; font-size: .72rem; line-height: 1.6; }
+        .decision-empty {
+            display: flex; height: 100%; align-items: center; justify-content: center;
+            color: #94a3b8; font-size: .74rem; text-align: center;
+        }
+        div[data-testid="stTabs"] { margin-top: 1rem; }
+        div[data-testid="stTabs"] button { color: #64748b; font-size: .78rem; }
+        div[data-testid="stTabs"] button[aria-selected="true"] { color: #6d28d9; }
+        div[data-baseweb="tab-highlight"] { background-color: #8b5cf6; }
+        div[data-testid="stButton"] button[kind="primary"] {
+            border-color: #7c3aed; background: #7c3aed; color: #ffffff;
+        }
+        div[data-testid="stButton"] button[kind="secondary"] {
+            border-color: #cbd5e1; background: #ffffff; color: #334155;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -89,6 +118,7 @@ def inject_styles() -> None:
 
 def render_company_card(
     company: Company,
+    score: CompanyScore,
     accent: str,
     highlight: str,
     *,
@@ -99,10 +129,14 @@ def render_company_card(
         f"""
         <div class="company-card">
             <div class="company-accent" style="background:{accent}"></div>
-            <div class="company-name">{escape(company.name)}</div>
+            <div class="company-topline">
+                <div class="company-name">{escape(company.name)}</div>
+                <div class="live-rank" style="color:{highlight}">#{score.position} LIVE</div>
+            </div>
             <div class="model-name">{escape(company.model)}</div>
             <div class="cash">${company.cash:,.0f}</div>
             <div class="cash-label">AVAILABLE CASH</div>
+            <div class="valuation">Valuation ${score.total_value:,.0f}</div>
             <div class="card-divider"></div>
             <div class="metric-grid">
                 <div><div class="metric-value">{len(company.employees)}</div><div class="metric-label">EMPLOYEES</div></div>
@@ -289,6 +323,17 @@ def render_decision_error(
     )
 
 
+def render_decision_placeholder(slot: DeltaGenerator, next_round: int) -> None:
+    slot.markdown(
+        f"""
+        <div class="decision-box">
+            <div class="decision-empty">Awaiting decision for round {next_round}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_company_grid(
     session: GameSession,
     config: AppConfig,
@@ -296,12 +341,14 @@ def render_company_grid(
     latest_decisions = session.latest_round.decisions if session.latest_round else {}
     latest_errors = session.latest_round.errors if session.latest_round else {}
     decision_slots = {}
+    scores = {score.company_id: score for score in CompanyRanker().rank(session.state).rankings}
     columns = st.columns(config.game.company_count, gap="medium")
     for column, company in zip(columns, session.state.companies, strict=True):
         accent, highlight = COMPANY_COLORS[company.id]
         with column:
             render_company_card(
                 company,
+                scores[company.id],
                 accent,
                 highlight,
                 is_finished=session.is_finished,
@@ -321,25 +368,26 @@ def render_company_grid(
                     latest_errors[company.id],
                     session.state.last_round_events.get(company.id),
                 )
+            else:
+                render_decision_placeholder(slot, session.state.round_number + 1)
     return decision_slots
 
 
 def render_talent_pool(state: GameState) -> None:
-    with st.expander(f"Available talent · {len(state.available_candidates)} candidates"):
-        st.dataframe(
-            [
-                {
-                    "Candidate": candidate.name,
-                    "Role": candidate.role.value.title(),
-                    "Personality": candidate.personality.value.title(),
-                    "Skill": candidate.skill,
-                    "Salary / round": f"${candidate.salary:,}",
-                }
-                for candidate in state.available_candidates
-            ],
-            hide_index=True,
-            use_container_width=True,
-        )
+    st.dataframe(
+        [
+            {
+                "Candidate": candidate.name,
+                "Role": candidate.role.value.title(),
+                "Personality": candidate.personality.value.title(),
+                "Skill": candidate.skill,
+                "Salary / round": f"${candidate.salary:,}",
+            }
+            for candidate in state.available_candidates
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 def employee_roster_rows(state: GameState) -> list[dict[str, str | int]]:
@@ -360,13 +408,11 @@ def employee_roster_rows(state: GameState) -> list[dict[str, str | int]]:
 
 
 def render_employee_rosters(state: GameState) -> None:
-    employee_count = sum(len(company.employees) for company in state.companies)
-    with st.expander(f"Company teams · {employee_count} employees"):
-        st.dataframe(
-            employee_roster_rows(state),
-            hide_index=True,
-            use_container_width=True,
-        )
+    st.dataframe(
+        employee_roster_rows(state),
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 def history_chart_rows(
@@ -387,32 +433,64 @@ def history_chart_rows(
 
 
 def render_game_history(snapshots: list[RoundSnapshot]) -> None:
-    completed_rounds = snapshots[-1].round_number if snapshots else 0
-    with st.expander(f"Game history · {completed_rounds} rounds completed"):
-        chart_specs = (
-            ("Cash", "cash"),
-            ("Product", "product_score"),
-            ("Reputation", "reputation"),
-            ("Clients", "client_count"),
-            ("Employees", "employee_count"),
+    chart_specs = (
+        ("Cash", "cash"),
+        ("Product", "product_score"),
+        ("Reputation", "reputation"),
+        ("Clients", "client_count"),
+        ("Employees", "employee_count"),
+    )
+    tabs = st.tabs([label for label, _ in chart_specs])
+    for tab, (label, metric) in zip(tabs, chart_specs, strict=True):
+        with tab:
+            rows = history_chart_rows(snapshots, metric)
+            company_names = (
+                [company.company_name for company in snapshots[0].companies] if snapshots else []
+            )
+            st.line_chart(
+                rows,
+                x="Round",
+                y=company_names,
+                x_label="Round",
+                y_label=label,
+                height=300,
+            )
+
+
+def company_overview_rows(state: GameState) -> list[dict[str, str | int]]:
+    scores = {score.company_id: score for score in CompanyRanker().rank(state).rankings}
+    return [
+        {
+            "Rank": scores[company.id].position,
+            "Company": company.name,
+            "Model": company.model,
+            "Valuation": f"${scores[company.id].total_value:,}",
+            "Cash": f"${company.cash:,}",
+            "Product": company.product_score,
+            "Reputation": company.reputation,
+            "Clients": len(company.client_ids),
+            "Employees": len(company.employees),
+        }
+        for company in sorted(state.companies, key=lambda item: scores[item.id].position)
+    ]
+
+
+def render_dashboard_tabs(session: GameSession) -> None:
+    overview_tab, teams_tab, talent_tab, history_tab = st.tabs(
+        ["Overview", "Teams", "Talent", "History"]
+    )
+    with overview_tab:
+        st.dataframe(
+            company_overview_rows(session.state),
+            hide_index=True,
+            use_container_width=True,
         )
-        tabs = st.tabs([label for label, _ in chart_specs])
-        for tab, (label, metric) in zip(tabs, chart_specs, strict=True):
-            with tab:
-                rows = history_chart_rows(snapshots, metric)
-                company_names = (
-                    [company.company_name for company in snapshots[0].companies]
-                    if snapshots
-                    else []
-                )
-                st.line_chart(
-                    rows,
-                    x="Round",
-                    y=company_names,
-                    x_label="Round",
-                    y_label=label,
-                    height=320,
-                )
+    with teams_tab:
+        render_employee_rosters(session.state)
+    with talent_tab:
+        render_talent_pool(session.state)
+    with history_tab:
+        render_game_history(session.snapshot_history)
 
 
 def render_final_ranking(result: GameResult) -> None:
@@ -471,13 +549,11 @@ def render_arena(
     if session.is_finished:
         render_final_ranking(CompanyRanker().rank(state))
 
-    render_talent_pool(state)
-    render_employee_rosters(state)
-    render_game_history(session.snapshot_history)
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
         render_round_controls(session, coordinator, resolver, config, decision_slots)
+    render_dashboard_tabs(session)
 
 
 def run() -> None:
