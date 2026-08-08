@@ -161,9 +161,17 @@ The decision schema is ready for four sabotage actions: `product_disruption`,
 spend at least `$20,000`, select one of these actions, and identify an existing competing
 company through `target_company_id`. A company cannot target itself.
 
-The resolver does not apply sabotage effects yet. Until that stage is implemented, the model
-prompt and decision normalizer keep sabotage disabled by setting its budget to `0` and both
-the action and target to `null`.
+The resolver applies one sabotage level for every `$20,000` spent:
+
+- `product_disruption` removes `2` product points per level;
+- `reputation_attack` removes `2` reputation points per level;
+- `client_interference` shortens one active client contract by one round per level, prioritizing
+  contracts closest to expiration;
+- `talent_disruption` removes `4` morale and `2` loyalty from every target employee per level.
+
+Effects never reduce scores below zero. Both the attacker and target receive a round event that
+describes the result. The model prompt and normalizer still keep sabotage disabled until the next
+integration stage, when models will receive the rules and valid company targets.
 
 ### Training
 

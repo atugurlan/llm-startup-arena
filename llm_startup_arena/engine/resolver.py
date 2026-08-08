@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 
 from llm_startup_arena.domain import Company, Employee, EmployeePersonality, EmployeeRole, GameState
-from llm_startup_arena.llm.provider import BudgetAllocation, CompanyDecision
+from llm_startup_arena.llm.provider import BudgetAllocation, CompanyDecision, SabotageAction
 
 INVESTMENT_PER_SCORE_POINT = 20_000
 UNPAID_PAYROLL_MORALE_PENALTY = 20
@@ -18,6 +18,11 @@ SALES_POWER_PER_ACQUISITION_POINT = 50
 OPERATIONS_POWER_PER_PAYROLL_PERCENT = 5
 MAX_PAYROLL_DISCOUNT_PERCENT = 20
 MIN_RECRUITMENT_BUDGET_PER_CANDIDATE = 20_000
+SABOTAGE_COST_PER_LEVEL = 20_000
+PRODUCT_DAMAGE_PER_LEVEL = 2
+REPUTATION_DAMAGE_PER_LEVEL = 2
+TALENT_MORALE_DAMAGE_PER_LEVEL = 4
+TALENT_LOYALTY_DAMAGE_PER_LEVEL = 2
 LOW_MORALE_THRESHOLD = 40
 LOW_MORALE_POWER_PERCENT = 50
 DEPARTURE_LOYALTY_THRESHOLD = 40
@@ -315,7 +320,72 @@ class RoundResolver:
         state: GameState,
         decisions: Mapping[str, CompanyDecision],
     ) -> GameState:
-        return state
+        resolved = state.model_copy(deep=True)
+        companies = {company.id: company for company in resolved.companies}
+
+        for attacker in resolved.companies:
+            decision = decisions.get(attacker.id)
+            if (
+                decision is None
+                or decision.budget.sabotage < SABOTAGE_COST_PER_LEVEL
+                or decision.sabotage_action is None
+                or decision.target_company_id not in companies
+                or decision.target_company_id == attacker.id
+            ):
+                continue
+
+            target = companies[decision.target_company_id]
+            levels = decision.budget.sabotage // SABOTAGE_COST_PER_LEVEL
+            effect = self._apply_sabotage_effect(
+                resolved,
+                target,
+                decision.sabotage_action,
+                levels,
+            )
+            _record_event(
+                resolved,
+                attacker.id,
+                f"Sabotage against {target.name}: {effect}",
+            )
+            _record_event(
+                resolved,
+                target.id,
+                f"Sabotaged by {attacker.name}: {effect}",
+            )
+
+        return resolved
+
+    @staticmethod
+    def _apply_sabotage_effect(
+        state: GameState,
+        target: Company,
+        action: SabotageAction,
+        levels: int,
+    ) -> str:
+        match action:
+            case SabotageAction.PRODUCT_DISRUPTION:
+                damage = min(target.product_score, levels * PRODUCT_DAMAGE_PER_LEVEL)
+                target.product_score -= damage
+                return f"product score -{damage}."
+            case SabotageAction.REPUTATION_ATTACK:
+                damage = min(target.reputation, levels * REPUTATION_DAMAGE_PER_LEVEL)
+                target.reputation -= damage
+                return f"reputation -{damage}."
+            case SabotageAction.CLIENT_INTERFERENCE:
+                affected, released = _disrupt_client_contracts(state, target, levels)
+                return f"{affected} client contract(s) shortened; {released} client(s) released."
+            case SabotageAction.TALENT_DISRUPTION:
+                morale_damage = levels * TALENT_MORALE_DAMAGE_PER_LEVEL
+                loyalty_damage = levels * TALENT_LOYALTY_DAMAGE_PER_LEVEL
+                for employee in target.employees:
+                    employee.morale = max(0, employee.morale - morale_damage)
+                    employee.loyalty = max(0, employee.loyalty - loyalty_damage)
+                return (
+                    f"{len(target.employees)} employees lost up to {morale_damage} morale "
+                    f"and {loyalty_damage} loyalty."
+                )
+
+        raise ValueError(f"Unsupported sabotage action: {action}")
 
     def process_payroll(self, state: GameState) -> GameState:
         resolved = state.model_copy(deep=True)
@@ -381,6 +451,28 @@ class RoundResolver:
 
 def _record_event(state: GameState, company_id: str, message: str) -> None:
     state.last_round_events.setdefault(company_id, []).append(message)
+
+
+def _disrupt_client_contracts(
+    state: GameState,
+    target: Company,
+    levels: int,
+) -> tuple[int, int]:
+    contracts = sorted(
+        (client for client in state.clients if client.company_id == target.id),
+        key=lambda client: (client.contract_rounds_remaining, client.id),
+    )
+    affected = min(levels, len(contracts))
+    released = 0
+    for client in contracts[:affected]:
+        client.contract_rounds_remaining -= 1
+        if client.contract_rounds_remaining > 0:
+            continue
+        client.company_id = None
+        if client.id in target.client_ids:
+            target.client_ids.remove(client.id)
+        released += 1
+    return affected, released
 
 
 def _role_power(company: Company, role: EmployeeRole) -> int:
