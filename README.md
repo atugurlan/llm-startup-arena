@@ -255,6 +255,23 @@ targets and invalid employee targets are removed. Empty sabotage allocations hav
 action or target cleared, while funded sabotage decisions remain subject to full validation.
 Overspending and malformed responses remain hard errors and reject the decision.
 
+### Final ranking
+
+After round `10`, the interface displays the final standings and disables additional rounds.
+Each company receives a valuation composed of:
+
+| Component | Valuation |
+| --- | ---: |
+| Cash | Current cash balance |
+| Product | `product_score × $5,000` |
+| Reputation | `reputation × $5,000` |
+| Clients | Remaining contract rounds × revenue per round |
+| Employees | `skill × $1,000 + experience × $500 + morale × $250 + loyalty × $250` per employee |
+
+The company with the highest total valuation wins. Ties are resolved deterministically by cash,
+client value, product value, reputation value, employee value, and finally company ID. The final
+screen shows every company's position, total valuation, model, and complete score breakdown.
+
 ## Architecture
 
 ### Application flow
@@ -271,6 +288,8 @@ flowchart LR
         direction TB
         Factory["Game Factory"]
         Resolver["Round Resolver"]
+        Ranker["Company Ranker"]
+        Result["Game Result"]
         State["Game State"]
     end
 
@@ -296,6 +315,9 @@ flowchart LR
     Factory -->|creates| State
     Session -->|applies decisions| Resolver
     Resolver -->|updates| State
+    Ranker -->|values final| State
+    Ranker -->|creates| Result
+    App -->|displays after round 10| Result
 
     Coordinator -->|shared snapshot| State
     Coordinator -->|requests decision| Ollama

@@ -2,7 +2,7 @@ import pytest
 
 from llm_startup_arena.config import DEFAULT_MODELS, GameConfig
 from llm_startup_arena.domain import GameState
-from llm_startup_arena.engine import GameFactory, RoundResolver
+from llm_startup_arena.engine import CompanyRanker, GameFactory, RoundResolver
 from llm_startup_arena.llm import (
     BudgetAllocation,
     CompanyDecision,
@@ -12,6 +12,7 @@ from llm_startup_arena.llm import (
 from llm_startup_arena.ui.app import (
     employee_roster_rows,
     render_decision,
+    render_final_ranking,
     round_label,
     run_next_round,
 )
@@ -131,3 +132,37 @@ def test_decision_card_shows_sabotage_action_and_company_name() -> None:
 
     assert "Sabotage: reputation_attack" in rendered[0]
     assert "Target: Orbit AI" in rendered[0]
+
+
+def test_final_ranking_renders_winner_and_score_breakdown(monkeypatch) -> None:
+    state = GameFactory(GameConfig(), DEFAULT_MODELS).create()
+    state.companies[0].cash += 100_000
+    result = CompanyRanker().rank(state)
+    rendered: list[str] = []
+
+    class FakeColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "llm_startup_arena.ui.app.st.markdown",
+        lambda content, **kwargs: rendered.append(content),
+    )
+    monkeypatch.setattr(
+        "llm_startup_arena.ui.app.st.columns",
+        lambda count, **kwargs: [FakeColumn() for _ in range(count)],
+    )
+
+    render_final_ranking(result)
+
+    assert len(rendered) == 5
+    assert "Winner: Nova Labs" in rendered[0]
+    assert "#1" in rendered[1]
+    assert "Cash:" in rendered[1]
+    assert "Product:" in rendered[1]
+    assert "Reputation:" in rendered[1]
+    assert "Clients:" in rendered[1]
+    assert "Team:" in rendered[1]
