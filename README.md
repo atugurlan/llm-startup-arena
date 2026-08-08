@@ -93,6 +93,10 @@ environment synchronized with `pyproject.toml` and `uv.lock`.
 The main screen displays four company cards. `Run next round` calls the models one at a
 time and displays each validated decision as soon as it arrives.
 
+The `Company teams` section shows the current owner, role, personality, skill, morale,
+loyalty, and salary of every employee. It updates after hiring, poaching, retention, payroll
+penalties, and departures, making employee movement directly verifiable from the interface.
+
 Run the checks with:
 
 ```powershell

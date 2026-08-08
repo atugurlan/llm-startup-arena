@@ -318,6 +318,33 @@ def render_talent_pool(state: GameState) -> None:
         )
 
 
+def employee_roster_rows(state: GameState) -> list[dict[str, str | int]]:
+    return [
+        {
+            "Company": company.name,
+            "Employee": employee.name,
+            "Role": employee.role.value.title(),
+            "Personality": employee.personality.value.title(),
+            "Skill": employee.skill,
+            "Morale": employee.morale,
+            "Loyalty": employee.loyalty,
+            "Salary / round": f"${employee.salary:,}",
+        }
+        for company in state.companies
+        for employee in company.employees
+    ]
+
+
+def render_employee_rosters(state: GameState) -> None:
+    employee_count = sum(len(company.employees) for company in state.companies)
+    with st.expander(f"Company teams · {employee_count} employees"):
+        st.dataframe(
+            employee_roster_rows(state),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
 def render_arena(
     session: GameSession,
     coordinator: DecisionCoordinator,
@@ -337,6 +364,7 @@ def render_arena(
     )
 
     render_talent_pool(state)
+    render_employee_rosters(state)
     controls = st.container()
     decision_slots = render_company_grid(session, config)
     with controls:
